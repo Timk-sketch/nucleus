@@ -28,8 +28,9 @@ Log.Logger = new LoggerConfiguration()
 builder.Host.UseSerilog();
 
 // ── Database (Supabase / PostgreSQL) ─────────────────────────────────────
-var connectionString = builder.Configuration["NUCLEUS_DB_CONNECTION"]
-    ?? throw new InvalidOperationException("NUCLEUS_DB_CONNECTION not set");
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? builder.Configuration["NUCLEUS_DB_CONNECTION"]
+    ?? throw new InvalidOperationException("Connection string not set (ConnectionStrings__DefaultConnection or NUCLEUS_DB_CONNECTION)");
 
 builder.Services.AddDbContext<NucleusDbContext>(opts =>
     opts.UseNpgsql(connectionString));
@@ -47,8 +48,9 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(opts =>
 .AddDefaultTokenProviders();
 
 // ── JWT Auth ──────────────────────────────────────────────────────────────
-var jwtSecret = builder.Configuration["JWT_SECRET"]
-    ?? throw new InvalidOperationException("JWT_SECRET not set");
+var jwtSecret = builder.Configuration["Jwt:Key"]
+    ?? builder.Configuration["JWT_SECRET"]
+    ?? throw new InvalidOperationException("JWT secret not set (Jwt__Key or JWT_SECRET)");
 
 builder.Services.AddAuthentication(opts =>
 {

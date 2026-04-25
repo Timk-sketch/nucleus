@@ -11,8 +11,9 @@ namespace Nucleus.Infrastructure.Auth;
 
 public class JwtTokenService(IConfiguration config) : IJwtTokenService
 {
-    private readonly string _secret = config["JWT_SECRET"]
-        ?? throw new InvalidOperationException("JWT_SECRET not configured");
+    private readonly string _secret = config["Jwt:Key"]
+        ?? config["JWT_SECRET"]
+        ?? throw new InvalidOperationException("JWT secret not configured (Jwt__Key or JWT_SECRET)");
     private readonly int _expiryMinutes = int.TryParse(config["JWT_EXPIRY_MINUTES"], out var m) ? m : 60;
     private readonly int _refreshDays = int.TryParse(config["JWT_REFRESH_EXPIRY_DAYS"], out var d) ? d : 30;
 
