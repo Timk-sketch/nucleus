@@ -1,67 +1,119 @@
-using MediatR;
-using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Nucleus.Application.Auth.Commands;
+using Microsoft.EntityFrameworkCore;
+using Nucleus.Application.Common;
+using Nucleus.Domain.Entities;
+using Nucleus.Infrastructure.Auth;
+using Nucleus.Infrastructure.Data;
 
 namespace Nucleus.Api.Controllers;
 
 [ApiController]
 [Route("api/v1/auth")]
-[Produces("application/json")]
-public class AuthController : ControllerBase
+public class AuthController(
+    UserManager<ApplicationUser> userManager,
+    SignInManager<ApplicationUser> signInManager,
+    JwtTokenService jwtService,
+    NucleusDbContext db) : ControllerBase
 {
-    private readonly IMediator _mediator;
-
-    public AuthController(IMediator mediator)
-    {
-        _mediator = mediator;
-    }
-
+    // POST /api/v1/auth/register
     [HttpPost("register")]
-    [AllowAnonymous]
-    [ProducesResponseType(typeof(AuthResponse), 200)]
-    [ProducesResponseType(typeof(ProblemDetails), 400)]
-    public async Task<IActionResult> Register([FromBody] RegisterRequest req, CancellationToken ct)
+    public async Task<IActionResult> Register([FromBody] RegisterRequest req)
     {
-        var result = await _mediator.Send(new RegisterCommand(
-            req.TenantName, req.Email, req.Password, req.FirstName, req.LastName), ct);
+        if (await userManager.FindByEmailAsync(req.Email) != null)
+            return Conflict(ApiResponse.Fail("Email already registered"));
 
+        var tenant = new Tenant
+        {
+            Name = req.CompanyName,
+            Slug = req.CompanyName.ToLowerInvariant().Replace(" ", "-"),
+            Plan = "starter",
+        };
+        db.Tenants.Add(tenant);
+        await db.SaveChangesAsync();
+
+        var user = new ApplicationUser
+        {
+            UserName = req.Email,
+            Email = req.Email,
+            FirstName = req.FirstName,
+            LastName = req.LastName,
+            TenantId = tenant.Id,
+            Role = "TenantAdmin",
+        };
+
+        var result = await userManager.CreateAsync(user, req.Password);
         if (!result.Succeeded)
-            return BadRequest(new { errors = result.Errors });
+            return BadRequest(ApiResponse.Fail(string.Join("; ", result.Errors.Select(e => e.Description))));
 
-        return Ok(new AuthResponse(result.AccessToken!, result.RefreshToken!, result.ExpiresIn));
+        await userManager.AddToRoleAsync(user, "TenantAdmin");
+
+        var tokenPair = jwtService.GenerateTokenPair(user);
+        var refreshToken = new Nucleus.Domain.Entities.RefreshToken
+        {
+            UserId = user.Id, TenantId = user.TenantId,
+            Token = tokenPair.RefreshToken,
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(30),
+        };
+        db.RefreshTokens.Add(refreshToken);
+        await db.SaveChangesAsync();
+
+        return Ok(ApiResponse.Ok(new TokenResponse(tokenPair.AccessToken, tokenPair.RefreshToken, tokenPair.ExpiresIn)));
     }
 
+    // POST /api/v1/auth/login
     [HttpPost("login")]
-    [AllowAnonymous]
-    [ProducesResponseType(typeof(AuthResponse), 200)]
-    [ProducesResponseType(typeof(ProblemDetails), 401)]
-    public async Task<IActionResult> Login([FromBody] LoginRequest req, CancellationToken ct)
+    public async Task<IActionResult> Login([FromBody] LoginRequest req)
     {
-        var result = await _mediator.Send(new LoginCommand(req.Email, req.Password), ct);
+        var user = await userManager.FindByEmailAsync(req.Email);
+        if (user == null) return Unauthorized(ApiResponse.Fail("Invalid credentials"));
 
-        if (!result.Succeeded)
-            return Unauthorized(new { error = result.Error });
+        var result = await signInManager.CheckPasswordSignInAsync(user, req.Password, false);
+        if (!result.Succeeded) return Unauthorized(ApiResponse.Fail("Invalid credentials"));
 
-        return Ok(new AuthResponse(result.AccessToken!, result.RefreshToken!, result.ExpiresIn));
+        var tokenPair = jwtService.GenerateTokenPair(user);
+        var refreshToken = new Nucleus.Domain.Entities.RefreshToken
+        {
+            UserId = user.Id, TenantId = user.TenantId,
+            Token = tokenPair.RefreshToken,
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(30),
+        };
+        db.RefreshTokens.Add(refreshToken);
+        await db.SaveChangesAsync();
+
+        return Ok(ApiResponse.Ok(new TokenResponse(tokenPair.AccessToken, tokenPair.RefreshToken, tokenPair.ExpiresIn)));
     }
 
+    // POST /api/v1/auth/refresh
     [HttpPost("refresh")]
-    [AllowAnonymous]
-    [ProducesResponseType(typeof(AuthResponse), 200)]
-    [ProducesResponseType(typeof(ProblemDetails), 401)]
-    public async Task<IActionResult> Refresh([FromBody] RefreshRequest req, CancellationToken ct)
+    public async Task<IActionResult> Refresh([FromBody] RefreshRequest req)
     {
-        var result = await _mediator.Send(new RefreshTokenCommand(req.RefreshToken), ct);
+        var stored = await db.RefreshTokens
+            .FirstOrDefaultAsync(r => r.Token == req.RefreshToken && !r.IsRevoked);
 
-        if (!result.Succeeded)
-            return Unauthorized(new { error = result.Error });
+        if (stored == null || stored.ExpiresAt < DateTimeOffset.UtcNow)
+            return Unauthorized(ApiResponse.Fail("Invalid or expired refresh token"));
 
-        return Ok(new AuthResponse(result.AccessToken!, result.RefreshToken!, result.ExpiresIn));
+        stored.IsRevoked = true;
+
+        var user = await userManager.FindByIdAsync(stored.UserId.ToString());
+        if (user == null) return Unauthorized(ApiResponse.Fail("User not found"));
+
+        var tokenPair = jwtService.GenerateTokenPair(user);
+        var newRefresh = new Nucleus.Domain.Entities.RefreshToken
+        {
+            UserId = user.Id, TenantId = user.TenantId,
+            Token = tokenPair.RefreshToken,
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(30),
+        };
+        db.RefreshTokens.Add(newRefresh);
+        await db.SaveChangesAsync();
+
+        return Ok(ApiResponse.Ok(new TokenResponse(tokenPair.AccessToken, tokenPair.RefreshToken, tokenPair.ExpiresIn)));
     }
 }
 
-public record RegisterRequest(string TenantName, string Email, string Password, string FirstName, string LastName);
+public record RegisterRequest(string Email, string Password, string FirstName, string LastName, string CompanyName);
 public record LoginRequest(string Email, string Password);
 public record RefreshRequest(string RefreshToken);
-public record AuthResponse(string AccessToken, string RefreshToken, int ExpiresIn);
+public record TokenResponse(string AccessToken, string RefreshToken, int ExpiresIn);

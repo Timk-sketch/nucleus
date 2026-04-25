@@ -1,15 +1,11 @@
 {
-  "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "DOCKERFILE",
     "dockerfilePath": "docker/Dockerfile"
   },
   "deploy": {
-    "startCommand": "dotnet Nucleus.Api.dll",
     "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 5
-  },
-  "networking": {
-    "requestTimeout": 300
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 30
   }
 }

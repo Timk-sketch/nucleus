@@ -1,146 +1,165 @@
 using System.Text;
-using AspNetCoreRateLimit;
+using FluentValidation;
 using Hangfire;
-using Microsoft.EntityFrameworkCore;
+using Hangfire.PostgreSql;
+using MediatR;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Nucleus.Application.Behaviors;
+using Nucleus.Api.Hubs;
 using Nucleus.Api.Middleware;
-using Nucleus.Application;
+using Nucleus.Domain.Entities;
 using Nucleus.Application.Common.Interfaces;
-using Nucleus.Infrastructure;
+using Nucleus.Infrastructure.Auth;
+using Nucleus.Infrastructure.Data;
+using Nucleus.Infrastructure.Jobs;
+using Nucleus.Infrastructure.Multitenancy;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ── Serilog ────────────────────────────────────────────────────────────────
+// ── Serilog ───────────────────────────────────────────────────────────────
 Log.Logger = new LoggerConfiguration()
-    .ReadFrom.Configuration(builder.Configuration)
     .WriteTo.Console()
     .CreateLogger();
 builder.Host.UseSerilog();
 
-// ── Application + Infrastructure layers ───────────────────────────────────
-builder.Services.AddApplication();
-builder.Services.AddInfrastructure(builder.Configuration);
+// ── Database (Supabase / PostgreSQL) ─────────────────────────────────────
+var connectionString = builder.Configuration["NUCLEUS_DB_CONNECTION"]
+    ?? throw new InvalidOperationException("NUCLEUS_DB_CONNECTION not set");
 
-// ── Tenant service (scoped, written to by TenantMiddleware) ────────────────
-builder.Services.AddScoped<CurrentTenantServiceHolder>();
-builder.Services.AddScoped<ICurrentTenantService>(sp => sp.GetRequiredService<CurrentTenantServiceHolder>());
-builder.Services.AddScoped<ICurrentTenantServiceSetter>(sp => sp.GetRequiredService<CurrentTenantServiceHolder>());
+builder.Services.AddDbContext<NucleusDbContext>(opts =>
+    opts.UseNpgsql(connectionString));
+builder.Services.AddScoped<INucleusDbContext>(sp => sp.GetRequiredService<NucleusDbContext>());
 
-// ── JWT Authentication ─────────────────────────────────────────────────────
-var jwtKey = builder.Configuration["Jwt:Key"]
-    ?? throw new InvalidOperationException("Jwt:Key not configured");
-
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
-            ValidateIssuer = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"] ?? "nucleus",
-            ValidateAudience = true,
-            ValidAudience = builder.Configuration["Jwt:Audience"] ?? "nucleus",
-            ValidateLifetime = true,
-            ClockSkew = TimeSpan.Zero,
-        };
-    });
-
-builder.Services.AddAuthorization();
-
-// ── Rate Limiting ──────────────────────────────────────────────────────────
-builder.Services.AddMemoryCache();
-builder.Services.Configure<IpRateLimitOptions>(options =>
+// ── ASP.NET Identity ──────────────────────────────────────────────────────
+builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(opts =>
 {
-    options.EnableEndpointRateLimiting = true;
-    options.GeneralRules = new List<RateLimitRule>
+    opts.Password.RequireDigit = true;
+    opts.Password.RequiredLength = 8;
+    opts.Password.RequireNonAlphanumeric = false;
+    opts.User.RequireUniqueEmail = true;
+})
+.AddEntityFrameworkStores<NucleusDbContext>()
+.AddDefaultTokenProviders();
+
+// ── JWT Auth ──────────────────────────────────────────────────────────────
+var jwtSecret = builder.Configuration["JWT_SECRET"]
+    ?? throw new InvalidOperationException("JWT_SECRET not set");
+
+builder.Services.AddAuthentication(opts =>
+{
+    opts.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    opts.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(opts =>
+{
+    opts.TokenValidationParameters = new TokenValidationParameters
     {
-        new() { Endpoint = "*", Period = "1m", Limit = 600 },       // authenticated
-        new() { Endpoint = "*/auth/*", Period = "1m", Limit = 20 }, // auth endpoints stricter
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+        ValidateIssuer = false,
+        ValidateAudience = false,
+        ClockSkew = TimeSpan.FromSeconds(30),
+    };
+    // Allow JWT via SignalR query string
+    opts.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = ctx =>
+        {
+            var token = ctx.Request.Query["access_token"];
+            if (!string.IsNullOrEmpty(token) && ctx.HttpContext.Request.Path.StartsWithSegments("/hubs"))
+                ctx.Token = token;
+            return Task.CompletedTask;
+        }
     };
 });
-builder.Services.AddInMemoryRateLimiting();
-builder.Services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>();
+builder.Services.AddAuthorization();
 
-// ── Controllers + Swagger ──────────────────────────────────────────────────
-builder.Services.AddControllers();
+// ── Multi-tenancy ─────────────────────────────────────────────────────────
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentTenantService, CurrentTenantService>();
+
+// ── MediatR + FluentValidation ────────────────────────────────────────────
+builder.Services.AddMediatR(cfg =>
+    cfg.RegisterServicesFromAssembly(typeof(Nucleus.Application.Behaviors.ValidationBehavior<,>).Assembly));
+builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+builder.Services.AddValidatorsFromAssembly(typeof(Nucleus.Application.Behaviors.ValidationBehavior<,>).Assembly);
+
+// ── Hangfire ──────────────────────────────────────────────────────────────
+builder.Services.AddHangfire(cfg => cfg
+    .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+    .UseSimpleAssemblyNameTypeSerializer()
+    .UseRecommendedSerializerSettings()
+    .UsePostgreSqlStorage(opts => opts.UseNpgsqlConnection(connectionString)));
+builder.Services.AddHangfireServer();
+builder.Services.AddScoped<IBackgroundJobService, HangfireBackgroundJobService>();
+
+// ── SignalR ───────────────────────────────────────────────────────────────
+builder.Services.AddSignalR();
+
+// ── JWT token service ─────────────────────────────────────────────────────
+builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+builder.Services.AddScoped<JwtTokenService>();
+
+// ── Swagger ───────────────────────────────────────────────────────────────
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo
-    {
-        Title = "Nucleus API",
-        Version = "v1",
-        Description = "Multi-brand Marketing OS — powered by Nucleus"
-    });
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "Nucleus API", Version = "v1" });
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
+        In = ParameterLocation.Header,
+        Description = "JWT Bearer token",
         Name = "Authorization",
         Type = SecuritySchemeType.Http,
         Scheme = "bearer",
-        BearerFormat = "JWT",
-        In = ParameterLocation.Header,
     });
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
+        [new OpenApiSecurityScheme
         {
-            new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
-            },
-            Array.Empty<string>()
-        }
+            Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
+        }] = []
     });
 });
 
-// ── CORS ───────────────────────────────────────────────────────────────────
-builder.Services.AddCors(options =>
-{
-    options.AddDefaultPolicy(policy =>
-    {
-        var origins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? Array.Empty<string>();
-        policy.WithOrigins(origins)
-              .AllowAnyHeader()
-              .AllowAnyMethod()
-              .AllowCredentials();
-    });
-});
+builder.Services.AddControllers();
 
-// ── SignalR ────────────────────────────────────────────────────────────────
-builder.Services.AddSignalR();
+// ── CORS (dev-friendly) ───────────────────────────────────────────────────
+builder.Services.AddCors(opts =>
+    opts.AddPolicy("NucleusPolicy", p => p
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .AllowCredentials()
+        .SetIsOriginAllowed(_ => true)));
 
 var app = builder.Build();
 
-// ── Middleware pipeline ────────────────────────────────────────────────────
+app.UseMiddleware<TenantMiddleware>();
 app.UseSerilogRequestLogging();
-app.UseIpRateLimiting();
-
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
-
-app.UseHttpsRedirection();
-app.UseCors();
+app.UseCors("NucleusPolicy");
 app.UseAuthentication();
 app.UseAuthorization();
-app.UseMiddleware<TenantMiddleware>();
+
+app.UseSwagger();
+app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Nucleus v1"));
 
 app.MapControllers();
+app.MapHub<ProvisioningHub>("/hubs/provisioning");
 app.MapHangfireDashboard("/hangfire", new DashboardOptions
 {
-    Authorization = new[] { new HangfireAuthFilter() }
+    Authorization = [new Hangfire.Dashboard.LocalRequestsOnlyAuthorizationFilter()]
 });
 
-// ── Create DB schema on startup (Sprint 1 — no migration files yet) ────────
+// Auto-run EF migrations on startup
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<Nucleus.Infrastructure.Persistence.NucleusDbContext>();
-    db.Database.EnsureCreated();
+    var dbCtx = scope.ServiceProvider.GetRequiredService<NucleusDbContext>();
+    await dbCtx.Database.EnsureCreatedAsync();
 }
 
 app.Run();

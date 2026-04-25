@@ -2,29 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
     branches: [main]
 
 jobs:
-  build-and-test:
+  build:
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_DB: nucleus_test
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-
     steps:
       - uses: actions/checkout@v4
 
@@ -33,28 +17,14 @@ jobs:
         with:
           dotnet-version: "9.0.x"
 
-      - name: Cache NuGet packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-          restore-keys: ${{ runner.os }}-nuget-
-
       - name: Restore
-        run: dotnet restore Nucleus.sln
+        run: dotnet restore
 
       - name: Build
-        run: dotnet build Nucleus.sln --no-restore -c Release
+        run: dotnet build --no-restore -c Release
 
       - name: Test
-        run: dotnet test Nucleus.sln --no-build -c Release --verbosity normal --logger "trx;LogFileName=test-results.trx"
-        env:
-          ConnectionStrings__DefaultConnection: "Host=localhost;Database=nucleus_test;Username=postgres;Password=postgres"
-          Jwt__Key: "ci-secret-key-minimum-32-characters-long"
+        run: dotnet test --no-build -c Release --verbosity normal
 
-      - name: Upload test results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: test-results
-          path: "**/test-results.trx"
+      - name: Docker build check
+        run: docker build -f docker/Dockerfile . --tag nucleus:ci

@@ -45,7 +45,7 @@ public class BrandsController : ControllerBase
             {
                 b.Id, b.Code, b.Name, b.Domain, b.Slug,
                 b.PrimaryColor, b.Status, b.OnboardingStep,
-                b.OnboardingCompletedAt, b.ServicesProvisionedJson
+                b.OnboardingCompletedAt, b.ServicesProvisioned
             })
             .ToListAsync(ct);
 

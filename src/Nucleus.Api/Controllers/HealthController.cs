@@ -1,45 +1,26 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Nucleus.Application.Common.Interfaces;
+using Nucleus.Infrastructure.Data;
 
 namespace Nucleus.Api.Controllers;
 
 [ApiController]
 [Route("health")]
-public class HealthController : ControllerBase
+public class HealthController(NucleusDbContext db) : ControllerBase
 {
-    private readonly INucleusDbContext _db;
-
-    public HealthController(INucleusDbContext db)
-    {
-        _db = db;
-    }
-
     [HttpGet]
     [AllowAnonymous]
-    public async Task<IActionResult> Health(CancellationToken ct)
+    public async Task<IActionResult> Get()
     {
         try
         {
-            // Verify DB connectivity
-            await _db.Tenants.CountAsync(ct);
-            return Ok(new
-            {
-                status = "healthy",
-                service = "nucleus",
-                version = "1.0.0",
-                timestamp = DateTimeOffset.UtcNow
-            });
+            await db.Database.ExecuteSqlRawAsync("SELECT 1");
+            return Ok(new { status = "healthy", db = "connected", timestamp = DateTimeOffset.UtcNow });
         }
         catch (Exception ex)
         {
-            return StatusCode(503, new
-            {
-                status = "unhealthy",
-                error = ex.Message,
-                timestamp = DateTimeOffset.UtcNow
-            });
+            return StatusCode(503, new { status = "unhealthy", db = "disconnected", error = ex.Message });
         }
     }
 }

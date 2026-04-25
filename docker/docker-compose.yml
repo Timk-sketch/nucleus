@@ -1,5 +1,4 @@
 version: "3.9"
-
 services:
   nucleus-api:
     build:
@@ -8,30 +7,8 @@ services:
     ports:
       - "8080:8080"
     environment:
+      - NUCLEUS_DB_CONNECTION=${NUCLEUS_DB_CONNECTION}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRY_MINUTES=60
+      - JWT_REFRESH_EXPIRY_DAYS=30
       - ASPNETCORE_ENVIRONMENT=Development
-      - ConnectionStrings__DefaultConnection=Host=postgres;Database=nucleus_dev;Username=postgres;Password=postgres
-      - Jwt__Key=local-dev-secret-key-minimum-32-chars-long
-      - Jwt__Issuer=nucleus
-      - Jwt__Audience=nucleus
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_DB: nucleus_dev
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - nucleus_pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  nucleus_pgdata:

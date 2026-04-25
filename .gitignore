@@ -1,27 +1,20 @@
-## .NET
+# .NET
 bin/
 obj/
 *.user
 *.suo
 .vs/
-*.DotSettings.user
-TestResults/
-*.trx
+*.nupkg
 
-## Secrets — NEVER commit
-**/appsettings.Production.json
-**/secrets.json
+# Environment
 .env
 .env.local
+appsettings.*.json
+!appsettings.json
 
-## Migrations (generated — commit these)
-# src/Nucleus.Infrastructure/Migrations/
-
-## OS
-.DS_Store
-Thumbs.db
-
-## Rider / VS Code
+# Rider / VS Code
 .idea/
-*.sln.iml
-.vscode/launch.json
+.vscode/
+
+# Docker
+docker-compose.override.yml

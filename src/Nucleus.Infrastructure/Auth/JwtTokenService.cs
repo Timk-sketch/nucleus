@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -10,69 +9,46 @@ using Nucleus.Domain.Entities;
 
 namespace Nucleus.Infrastructure.Auth;
 
-public class JwtTokenService : IJwtTokenService
+public class JwtTokenService(IConfiguration config) : IJwtTokenService
 {
-    private readonly IConfiguration _config;
-    // In production, refresh tokens should be stored in the DB (not in-memory)
-    private static readonly ConcurrentDictionary<string, (Guid UserId, DateTimeOffset Expiry)> _refreshTokens = new();
-
-    public JwtTokenService(IConfiguration config)
-    {
-        _config = config;
-    }
+    private readonly string _secret = config["JWT_SECRET"]
+        ?? throw new InvalidOperationException("JWT_SECRET not configured");
+    private readonly int _expiryMinutes = int.TryParse(config["JWT_EXPIRY_MINUTES"], out var m) ? m : 60;
+    private readonly int _refreshDays = int.TryParse(config["JWT_REFRESH_EXPIRY_DAYS"], out var d) ? d : 30;
 
     public TokenPair GenerateTokenPair(ApplicationUser user)
     {
-        var jwtKey = _config["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key not configured");
-        var issuer = _config["Jwt:Issuer"] ?? "nucleus";
-        var audience = _config["Jwt:Audience"] ?? "nucleus";
-        var expiresInMinutes = int.Parse(_config["Jwt:ExpiresInMinutes"] ?? "60");
-
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_secret));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-        var claims = new[]
+        var claims = new List<Claim>
         {
-            new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-            new Claim("tenant_id", user.TenantId.ToString()),
-            new Claim(JwtRegisteredClaimNames.Email, user.Email ?? ""),
-            new Claim("role", user.Role),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+            new(JwtRegisteredClaimNames.Email, user.Email ?? ""),
+            new("tenant_id", user.TenantId.ToString()),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new(ClaimTypes.Role, user.Role),
         };
 
         var token = new JwtSecurityToken(
-            issuer: issuer,
-            audience: audience,
             claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(expiresInMinutes),
+            expires: DateTime.UtcNow.AddMinutes(_expiryMinutes),
             signingCredentials: creds);
 
         var accessToken = new JwtSecurityTokenHandler().WriteToken(token);
-        var refreshToken = GenerateRefreshToken();
+        var refreshToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
 
-        _refreshTokens[refreshToken] = (user.Id, DateTimeOffset.UtcNow.AddDays(30));
-
-        return new TokenPair(accessToken, refreshToken, expiresInMinutes * 60);
+        return new TokenPair(accessToken, refreshToken, _expiryMinutes * 60);
     }
 
     public (bool IsValid, Guid UserId) ValidateRefreshToken(string refreshToken)
     {
-        if (_refreshTokens.TryGetValue(refreshToken, out var entry))
-        {
-            if (entry.Expiry > DateTimeOffset.UtcNow)
-                return (true, entry.UserId);
-            _refreshTokens.TryRemove(refreshToken, out _);
-        }
+        // DB-backed validation is done in AuthController
         return (false, Guid.Empty);
     }
 
     public void RevokeRefreshToken(string refreshToken)
-        => _refreshTokens.TryRemove(refreshToken, out _);
-
-    private static string GenerateRefreshToken()
     {
-        var bytes = new byte[64];
-        RandomNumberGenerator.Fill(bytes);
-        return Convert.ToBase64String(bytes);
+        // DB-backed revocation is handled in AuthController
     }
 }
