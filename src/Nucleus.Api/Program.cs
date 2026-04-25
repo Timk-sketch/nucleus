@@ -95,14 +95,14 @@ builder.Services.AddMediatR(cfg =>
 builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
 builder.Services.AddValidatorsFromAssembly(typeof(Nucleus.Application.Behaviors.ValidationBehavior<,>).Assembly);
 
-// ── Hangfire ──────────────────────────────────────────────────────────────
-builder.Services.AddHangfire(cfg => cfg
-    .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
-    .UseSimpleAssemblyNameTypeSerializer()
-    .UseRecommendedSerializerSettings()
-    .UsePostgreSqlStorage(opts => opts.UseNpgsqlConnection(connectionString)));
-builder.Services.AddHangfireServer();
-builder.Services.AddScoped<IBackgroundJobService, HangfireBackgroundJobService>();
+// ── Hangfire (disabled until DB is confirmed reachable) ───────────────────
+// builder.Services.AddHangfire(cfg => cfg
+//     .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+//     .UseSimpleAssemblyNameTypeSerializer()
+//     .UseRecommendedSerializerSettings()
+//     .UsePostgreSqlStorage(opts => opts.UseNpgsqlConnection(connectionString)));
+// builder.Services.AddHangfireServer();
+// builder.Services.AddScoped<IBackgroundJobService, HangfireBackgroundJobService>();
 
 // ── SignalR ───────────────────────────────────────────────────────────────
 builder.Services.AddSignalR();
@@ -156,10 +156,10 @@ app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Nucleus v1"
 
 app.MapControllers();
 app.MapHub<ProvisioningHub>("/hubs/provisioning");
-app.MapHangfireDashboard("/hangfire", new DashboardOptions
-{
-    Authorization = [new Hangfire.Dashboard.LocalRequestsOnlyAuthorizationFilter()]
-});
+// app.MapHangfireDashboard("/hangfire", new DashboardOptions
+// {
+//     Authorization = [new Hangfire.Dashboard.LocalRequestsOnlyAuthorizationFilter()]
+// });
 
 // EnsureCreated runs in background so the app starts listening immediately
 // (Railway healthcheck needs a fast response — don't block on DB init)
