@@ -1,6 +1,7 @@
 using System.Text;
 using AspNetCoreRateLimit;
 using Hangfire;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -135,11 +136,11 @@ app.MapHangfireDashboard("/hangfire", new DashboardOptions
     Authorization = new[] { new HangfireAuthFilter() }
 });
 
-// ── Run DB migrations on startup ───────────────────────────────────────────
+// ── Create DB schema on startup (Sprint 1 — no migration files yet) ────────
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<Nucleus.Infrastructure.Persistence.NucleusDbContext>();
-    db.Database.Migrate();
+    db.Database.EnsureCreated();
 }
 
 app.Run();
