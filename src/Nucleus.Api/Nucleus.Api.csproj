@@ -10,10 +10,15 @@
   <ItemGroup>
     <ProjectReference Include="..\Nucleus.Application\Nucleus.Application.csproj" />
     <ProjectReference Include="..\Nucleus.Infrastructure\Nucleus.Infrastructure.csproj" />
+    <!-- Blazor WASM client — output copied to wwwroot at publish time -->
+    <ProjectReference Include="..\Nucleus.Web\Nucleus.Web.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.4" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="9.0.4" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR" Version="1.2.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.15" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="7.3.1" />
