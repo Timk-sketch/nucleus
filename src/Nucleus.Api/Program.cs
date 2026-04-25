@@ -21,6 +21,10 @@ using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ── Port (Railway injects PORT env var) ───────────────────────────────────
+var port = builder.Configuration["PORT"] ?? "8080";
+builder.WebHost.UseUrls($"http://+:{port}");
+
 // ── Serilog ───────────────────────────────────────────────────────────────
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
@@ -157,11 +161,14 @@ app.MapHangfireDashboard("/hangfire", new DashboardOptions
     Authorization = [new Hangfire.Dashboard.LocalRequestsOnlyAuthorizationFilter()]
 });
 
-// Auto-run EF migrations on startup
-using (var scope = app.Services.CreateScope())
+// EnsureCreated runs in background so the app starts listening immediately
+// (Railway healthcheck needs a fast response — don't block on DB init)
+_ = Task.Run(async () =>
 {
+    await Task.Delay(1000); // brief pause so DI is fully warm
+    using var scope = app.Services.CreateScope();
     var dbCtx = scope.ServiceProvider.GetRequiredService<NucleusDbContext>();
     await dbCtx.Database.EnsureCreatedAsync();
-}
+});
 
 app.Run();
