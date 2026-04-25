@@ -13,14 +13,18 @@ public class HealthController(NucleusDbContext db) : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> Get()
     {
+        string dbStatus;
         try
         {
-            await db.Database.ExecuteSqlRawAsync("SELECT 1");
-            return Ok(new { status = "healthy", db = "connected", timestamp = DateTimeOffset.UtcNow });
+            using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(3));
+            await db.Database.ExecuteSqlRawAsync("SELECT 1", cts.Token);
+            dbStatus = "connected";
         }
-        catch (Exception ex)
+        catch
         {
-            return StatusCode(503, new { status = "unhealthy", db = "disconnected", error = ex.Message });
+            dbStatus = "unreachable";
         }
+        // Always return 200 — Railway healthcheck only cares that the app is alive
+        return Ok(new { status = "ok", db = dbStatus, timestamp = DateTimeOffset.UtcNow });
     }
 }
