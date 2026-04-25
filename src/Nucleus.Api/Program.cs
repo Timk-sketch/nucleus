@@ -31,10 +31,26 @@ Log.Logger = new LoggerConfiguration()
     .CreateLogger();
 builder.Host.UseSerilog();
 
-// ── Database (Supabase / PostgreSQL) ─────────────────────────────────────
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+// ── Database ──────────────────────────────────────────────────────────────
+// Priority: appsettings → NUCLEUS_DB_CONNECTION (Supabase) → DATABASE_URL (Railway Postgres plugin)
+var rawConnStr = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? builder.Configuration["NUCLEUS_DB_CONNECTION"]
-    ?? throw new InvalidOperationException("Connection string not set (ConnectionStrings__DefaultConnection or NUCLEUS_DB_CONNECTION)");
+    ?? builder.Configuration["DATABASE_URL"];
+
+if (rawConnStr is null)
+    throw new InvalidOperationException("Connection string not set. Set NUCLEUS_DB_CONNECTION or add a Railway PostgreSQL plugin.");
+
+// Railway DATABASE_URL is a postgres:// URI — convert to Npgsql key=value format
+var connectionString = rawConnStr.StartsWith("postgres", StringComparison.OrdinalIgnoreCase)
+    ? ConvertPostgresUri(rawConnStr)
+    : rawConnStr;
+
+static string ConvertPostgresUri(string uri)
+{
+    var u = new Uri(uri);
+    var userInfo = u.UserInfo.Split(':');
+    return $"Host={u.Host};Port={u.Port};Database={u.AbsolutePath.TrimStart('/')};Username={userInfo[0]};Password={userInfo[1]};SSL Mode=Require;Trust Server Certificate=true";
+}
 
 builder.Services.AddDbContext<NucleusDbContext>(opts =>
     opts.UseNpgsql(connectionString));
