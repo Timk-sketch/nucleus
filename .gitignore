@@ -11,6 +11,8 @@ obj/
 .env.local
 appsettings.*.json
 !appsettings.json
+# Blazor WASM client config is a static asset — not sensitive
+!**/wwwroot/appsettings.*.json
 
 # Rider / VS Code
 .idea/
