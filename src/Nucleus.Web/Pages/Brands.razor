@@ -1,0 +1,96 @@
+@page "/brands"
+@attribute [Authorize]
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<PageTitle>Brands — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Brands</h1>
+        <p class="page-subtitle">@_brands.Count brand@(_brands.Count == 1 ? "" : "s") configured</p>
+    </div>
+    <a href="/brands/new" class="btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Add brand
+    </a>
+</div>
+
+@if (_loading)
+{
+    <div class="loading-state">
+        <div class="spinner spinner--lg"></div>
+        <p>Loading brands…</p>
+    </div>
+}
+else if (_error != null)
+{
+    <div class="error-state">
+        <p>@_error</p>
+        <button class="btn-secondary" @onclick="LoadBrands">Retry</button>
+    </div>
+}
+else if (_brands.Count == 0)
+{
+    <div class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5">
+            <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+        </svg>
+        <h3>No brands yet</h3>
+        <p>Add your first brand to get started.</p>
+        <a href="/brands/new" class="btn-primary">Add brand</a>
+    </div>
+}
+else
+{
+    <div class="brands-grid">
+        @foreach (var brand in _brands)
+        {
+            <div class="brand-card" @onclick="() => GoToBrand(brand.Id)">
+                <div class="brand-dot" style="background:@brand.PrimaryColor"></div>
+                <div class="brand-info">
+                    <div class="brand-name">@brand.Name</div>
+                    <div class="brand-domain">@brand.Domain</div>
+                </div>
+                <span class="brand-status brand-status--@brand.Status">@brand.Status</span>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<BrandSummary> _brands = [];
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadBrands();
+
+    private void GoToBrand(Guid id) => Nav.NavigateTo("/brands/" + id);
+
+    private async Task LoadBrands()
+    {
+        _loading = true;
+        _error = null;
+
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<BrandsResponse>("api/v1/brands");
+            _brands = resp?.Data ?? [];
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not load brands: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private record BrandSummary(Guid Id, string Code, string Name, string Domain,
+        string PrimaryColor, string Status, int OnboardingStep);
+    private record BrandsResponse(bool Success, List<BrandSummary> Data);
+}

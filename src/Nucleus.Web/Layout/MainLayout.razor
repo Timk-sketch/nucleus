@@ -1,0 +1,56 @@
+@inherits LayoutComponentBase
+@inject AuthService Auth
+@inject JwtAuthStateProvider AuthState
+@inject NavigationManager Nav
+
+<div class="app-shell">
+    <aside class="sidebar">
+        <div class="sidebar-logo">
+            <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
+                <rect width="32" height="32" rx="8" fill="#6366f1"/>
+                <path d="M8 16L14 10L20 16L14 22L8 16Z" fill="white" opacity="0.9"/>
+                <path d="M14 16L20 10L26 16L20 22L14 16Z" fill="white" opacity="0.6"/>
+            </svg>
+            <span>Nucleus</span>
+        </div>
+
+        <nav class="sidebar-nav">
+            <NavLink href="/dashboard" Match="NavLinkMatch.All" class="nav-item">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+                    <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+                </svg>
+                Dashboard
+            </NavLink>
+            <NavLink href="/brands" class="nav-item">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+                </svg>
+                Brands
+            </NavLink>
+        </nav>
+
+        <div class="sidebar-footer">
+            <button class="nav-item nav-item--signout" @onclick="HandleLogout">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                    <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+                Sign out
+            </button>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        @Body
+    </main>
+</div>
+
+@code {
+    private async Task HandleLogout()
+    {
+        await Auth.LogoutAsync();
+        AuthState.NotifyStateChanged();
+        Nav.NavigateTo("/login");
+    }
+}

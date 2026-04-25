@@ -1,0 +1,101 @@
+@page "/register"
+@layout Nucleus.Web.Layout.AuthLayout
+@inject AuthService Auth
+@inject JwtAuthStateProvider AuthState
+@inject NavigationManager Nav
+
+<div class="auth-card">
+    <div class="auth-logo">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+            <rect width="32" height="32" rx="8" fill="#6366f1"/>
+            <path d="M8 16L14 10L20 16L14 22L8 16Z" fill="white" opacity="0.9"/>
+            <path d="M14 16L20 10L26 16L20 22L14 16Z" fill="white" opacity="0.6"/>
+        </svg>
+        <span class="auth-logo-text">Nucleus</span>
+    </div>
+
+    <h1 class="auth-title">Create your account</h1>
+    <p class="auth-subtitle">Start managing all your brands in one place</p>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="auth-error">@_error</div>
+    }
+
+    <EditForm Model="_model" OnValidSubmit="HandleRegister">
+        <DataAnnotationsValidator />
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="firstName">First name</label>
+                <InputText id="firstName" @bind-Value="_model.FirstName" class="form-input" placeholder="Tim" />
+            </div>
+            <div class="form-group">
+                <label for="lastName">Last name</label>
+                <InputText id="lastName" @bind-Value="_model.LastName" class="form-input" placeholder="K" />
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="company">Company name</label>
+            <InputText id="company" @bind-Value="_model.CompanyName" class="form-input" placeholder="Dirt Legal" />
+        </div>
+
+        <div class="form-group">
+            <label for="email">Work email</label>
+            <InputText id="email" @bind-Value="_model.Email" type="email"
+                       class="form-input" placeholder="you@company.com" autocomplete="email" />
+        </div>
+
+        <div class="form-group">
+            <label for="password">Password <span class="label-hint">(8+ characters)</span></label>
+            <InputText id="password" @bind-Value="_model.Password" type="password"
+                       class="form-input" placeholder="••••••••" autocomplete="new-password" />
+        </div>
+
+        <button type="submit" class="btn-primary btn-full" disabled="@_loading">
+            @if (_loading) { <span class="spinner"></span> } else { <span>Create account</span> }
+        </button>
+    </EditForm>
+
+    <p class="auth-switch">
+        Already have an account? <a href="/login">Sign in</a>
+    </p>
+</div>
+
+@code {
+    private readonly RegisterModel _model = new();
+    private string? _error;
+    private bool _loading;
+
+    private async Task HandleRegister()
+    {
+        _loading = true;
+        _error = null;
+
+        var result = await Auth.RegisterAsync(
+            _model.Email, _model.Password,
+            _model.FirstName, _model.LastName, _model.CompanyName);
+
+        if (result.Succeeded)
+        {
+            AuthState.NotifyStateChanged();
+            Nav.NavigateTo("/dashboard");
+        }
+        else
+        {
+            _error = result.Error;
+        }
+
+        _loading = false;
+    }
+
+    private class RegisterModel
+    {
+        public string FirstName { get; set; } = "";
+        public string LastName { get; set; } = "";
+        public string CompanyName { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string Password { get; set; } = "";
+    }
+}

@@ -1,0 +1,98 @@
+@page "/dashboard"
+@attribute [Authorize]
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+<PageTitle>Dashboard — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Dashboard</h1>
+        <p class="page-subtitle">Marketing OS overview</p>
+    </div>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon stat-icon--brands">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+                <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+            </svg>
+        </div>
+        <div class="stat-body">
+            <div class="stat-label">Brands</div>
+            <div class="stat-value">@_brandCount</div>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-icon stat-icon--provisioning">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+            </svg>
+        </div>
+        <div class="stat-body">
+            <div class="stat-label">Services Active</div>
+            <div class="stat-value">—</div>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-icon stat-icon--health">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+        </div>
+        <div class="stat-body">
+            <div class="stat-label">API Status</div>
+            <div class="stat-value @(_apiHealthy ? "text-green" : "text-red")">
+                @(_apiHealthy ? "Healthy" : "Unreachable")
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="section-header">
+    <h2 class="section-title">Quick actions</h2>
+</div>
+
+<div class="actions-grid">
+    <a href="/brands" class="action-card">
+        <div class="action-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+                <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+            </svg>
+        </div>
+        <div>
+            <div class="action-title">Manage Brands</div>
+            <div class="action-desc">View and configure your brand accounts</div>
+        </div>
+    </a>
+
+    <a href="/brands/new" class="action-card">
+        <div class="action-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+            </svg>
+        </div>
+        <div>
+            <div class="action-title">Add Brand</div>
+            <div class="action-desc">Onboard a new brand and provision services</div>
+        </div>
+    </a>
+</div>
+
+@code {
+    private int _brandCount;
+    private bool _apiHealthy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // These will be wired to the real API in Sprint 3
+        _apiHealthy = true;
+        _brandCount = 0;
+        await Task.CompletedTask;
+    }
+}
