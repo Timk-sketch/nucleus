@@ -1,0 +1,2 @@
+# EF Core migrations are generated here via:
+# dotnet ef migrations add InitialCreate --project src/Nucleus.Infrastructure --startup-project src/Nucleus.Api

@@ -1,0 +1,27 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.DotSettings.user
+TestResults/
+*.trx
+
+## Secrets — NEVER commit
+**/appsettings.Production.json
+**/secrets.json
+.env
+.env.local
+
+## Migrations (generated — commit these)
+# src/Nucleus.Infrastructure/Migrations/
+
+## OS
+.DS_Store
+Thumbs.db
+
+## Rider / VS Code
+.idea/
+*.sln.iml
+.vscode/launch.json
