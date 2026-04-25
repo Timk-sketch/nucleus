@@ -1,0 +1,165 @@
+@page "/brands/new"
+@attribute [Authorize]
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<PageTitle>New Brand — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">New Brand</h1>
+        <p class="page-subtitle">Add a brand to provision integrations for.</p>
+    </div>
+</div>
+
+<div style="max-width:600px;">
+    @if (_error != null)
+    {
+        <div class="auth-error" style="margin-bottom:20px;">@_error</div>
+    }
+
+    <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:28px;">
+        <div class="section-header" style="margin-top:0;">
+            <span class="section-title">Brand details</span>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>CODE <span class="label-hint">(slug, e.g. dirt-legal)</span></label>
+                <input class="form-input" @bind="_code" placeholder="my-brand" />
+            </div>
+            <div class="form-group">
+                <label>PRIMARY COLOR</label>
+                <input class="form-input" @bind="_color" type="color" style="height:42px;padding:4px 8px;" />
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>BRAND NAME</label>
+            <input class="form-input" @bind="_name" placeholder="My Brand LLC" />
+        </div>
+
+        <div class="form-group">
+            <label>DOMAIN</label>
+            <input class="form-input" @bind="_domain" placeholder="mybrand.com" />
+        </div>
+
+        <div class="section-header">
+            <span class="section-title">WordPress <span class="label-hint" style="font-weight:400;">(optional)</span></span>
+        </div>
+
+        <div class="form-group">
+            <label>SITE URL</label>
+            <input class="form-input" @bind="_wpUrl" placeholder="https://mybrand.com" />
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>USERNAME</label>
+                <input class="form-input" @bind="_wpUser" placeholder="admin" />
+            </div>
+            <div class="form-group">
+                <label>APP PASSWORD</label>
+                <input class="form-input" type="password" @bind="_wpPass" placeholder="xxxx xxxx xxxx" />
+            </div>
+        </div>
+
+        <div class="section-header">
+            <span class="section-title">GoHighLevel <span class="label-hint" style="font-weight:400;">(optional)</span></span>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>LOCATION ID</label>
+                <input class="form-input" @bind="_ghlId" placeholder="abc123" />
+            </div>
+            <div class="form-group">
+                <label>API KEY</label>
+                <input class="form-input" type="password" @bind="_ghlKey" />
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>BRAND VOICE <span class="label-hint">(AI persona)</span></label>
+            <input class="form-input" @bind="_voice" placeholder="Professional, approachable, authority in vehicle registration" />
+        </div>
+
+        <div style="display:flex;gap:12px;margin-top:24px;">
+            <button class="btn-primary" @onclick="Submit" disabled="@_saving">
+                @if (_saving)
+                {
+                    <span class="spinner"></span>
+                    <span>Creating…</span>
+                }
+                else
+                {
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                    <span>Create brand</span>
+                }
+            </button>
+            <a href="/brands" class="btn-secondary">Cancel</a>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string _code = "";
+    private string _name = "";
+    private string _domain = "";
+    private string _color = "#6366f1";
+    private string? _wpUrl, _wpUser, _wpPass, _ghlId, _ghlKey, _voice;
+    private bool _saving;
+    private string? _error;
+
+    private async Task Submit()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_code) || string.IsNullOrWhiteSpace(_name) || string.IsNullOrWhiteSpace(_domain))
+        {
+            _error = "Code, name, and domain are required.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var payload = new
+            {
+                Code = _code.Trim().ToLowerInvariant(),
+                Name = _name.Trim(),
+                Domain = _domain.Trim().ToLowerInvariant(),
+                PrimaryColor = _color,
+                WpSiteUrl = string.IsNullOrWhiteSpace(_wpUrl) ? null : _wpUrl.Trim(),
+                WpUsername = string.IsNullOrWhiteSpace(_wpUser) ? null : _wpUser.Trim(),
+                WpAppPassword = string.IsNullOrWhiteSpace(_wpPass) ? null : _wpPass,
+                GhlLocationId = string.IsNullOrWhiteSpace(_ghlId) ? null : _ghlId.Trim(),
+                GhlApiKey = string.IsNullOrWhiteSpace(_ghlKey) ? null : _ghlKey,
+                BrandVoice = string.IsNullOrWhiteSpace(_voice) ? null : _voice.Trim(),
+            };
+
+            var resp = await Http.PostAsJsonAsync("api/v1/brands", payload);
+
+            if (resp.IsSuccessStatusCode)
+            {
+                var result = await resp.Content.ReadFromJsonAsync<CreateResponse>();
+                Nav.NavigateTo($"/brands/{result!.BrandId}");
+            }
+            else
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                _error = $"Error {(int)resp.StatusCode}: {body}";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private record CreateResponse(Guid BrandId, string Status);
+}

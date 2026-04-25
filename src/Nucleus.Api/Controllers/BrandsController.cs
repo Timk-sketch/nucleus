@@ -1,9 +1,11 @@
+using Hangfire;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Nucleus.Application.Brands.Commands;
 using Nucleus.Application.Common.Interfaces;
+using Nucleus.Api.Jobs;
 
 namespace Nucleus.Api.Controllers;
 
@@ -23,7 +25,6 @@ public class BrandsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "TenantAdmin,SuperAdmin")]
     [ProducesResponseType(typeof(CreateBrandResult), 201)]
     [ProducesResponseType(typeof(ProblemDetails), 400)]
     public async Task<IActionResult> Create([FromBody] CreateBrandRequest req, CancellationToken ct)
@@ -32,6 +33,9 @@ public class BrandsController : ControllerBase
             req.Code, req.Name, req.Domain, req.PrimaryColor,
             req.WpSiteUrl, req.WpUsername, req.WpAppPassword,
             req.GhlLocationId, req.GhlApiKey, req.BrandVoice), ct);
+
+        // Kick off background provisioning
+        BackgroundJob.Enqueue<BrandProvisioningJob>(job => job.RunAsync(result.BrandId));
 
         return CreatedAtAction(nameof(GetById), new { id = result.BrandId }, result);
     }
