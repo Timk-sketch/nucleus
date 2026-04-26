@@ -49,8 +49,11 @@ var connectionString = rawConnStr.StartsWith("postgres", StringComparison.Ordina
 static string ConvertPostgresUri(string uri)
 {
     var u = new Uri(uri);
-    var userInfo = u.UserInfo.Split(':');
-    return $"Host={u.Host};Port={u.Port};Database={u.AbsolutePath.TrimStart('/')};Username={userInfo[0]};Password={userInfo[1]};SSL Mode=Require;Trust Server Certificate=true";
+    var colonIdx = u.UserInfo.IndexOf(':');
+    var username = colonIdx >= 0 ? u.UserInfo[..colonIdx] : u.UserInfo;
+    var password = colonIdx >= 0 ? Uri.UnescapeDataString(u.UserInfo[(colonIdx + 1)..]) : "";
+    // SSL Mode=Prefer: uses SSL when the server supports it (Railway internal does not require it)
+    return $"Host={u.Host};Port={u.Port};Database={u.AbsolutePath.TrimStart('/')};Username={username};Password={password};SSL Mode=Prefer;Trust Server Certificate=true";
 }
 
 builder.Services.AddDbContext<NucleusDbContext>(opts =>
@@ -163,6 +166,9 @@ builder.Services.AddCors(opts =>
 
 var app = builder.Build();
 
+app.UseBlazorFrameworkFiles();    // serve Blazor WASM _framework/ files
+app.UseStaticFiles();              // serve wwwroot static assets
+
 app.UseMiddleware<TenantMiddleware>();
 app.UseSerilogRequestLogging();
 app.UseCors("NucleusPolicy");
@@ -175,6 +181,7 @@ app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Nucleus v1"
 app.MapControllers();
 app.MapHub<ProvisioningHub>("/hubs/provisioning");
 app.MapHangfireDashboard("/hangfire");
+app.MapFallbackToFile("index.html"); // SPA client-side routing fallback
 
 // EnsureCreated runs in background so the app starts listening immediately
 // (Railway healthcheck needs a fast response — don't block on DB init)
