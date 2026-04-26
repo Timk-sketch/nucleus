@@ -50,7 +50,7 @@
     private async Task HandleLogout()
     {
         await Auth.LogoutAsync();
-        AuthState.NotifyStateChanged();
+        await AuthState.NotifyStateChanged();
         Nav.NavigateTo("/login");
     }
 }

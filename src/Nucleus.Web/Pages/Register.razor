@@ -79,7 +79,7 @@
 
         if (result.Succeeded)
         {
-            AuthState.NotifyStateChanged();
+            await AuthState.NotifyStateChanged();
             Nav.NavigateTo("/dashboard");
         }
         else

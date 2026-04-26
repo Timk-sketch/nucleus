@@ -67,7 +67,7 @@
         var result = await Auth.LoginAsync(_model.Email, _model.Password);
         if (result.Succeeded)
         {
-            AuthState.NotifyStateChanged();
+            await AuthState.NotifyStateChanged();
             Nav.NavigateTo("/dashboard");
         }
         else

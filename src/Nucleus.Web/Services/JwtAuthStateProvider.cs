@@ -1,14 +1,23 @@
 using Microsoft.AspNetCore.Components.Authorization;
+using System.Security.Claims;
 
 namespace Nucleus.Web.Services;
 
 public class JwtAuthStateProvider(AuthService authService) : AuthenticationStateProvider
 {
-    public override async Task<AuthenticationState> GetAuthenticationStateAsync()
+    private AuthenticationState _current = new(new ClaimsPrincipal(new ClaimsIdentity()));
+
+    // Synchronous — returns cached state immediately (no JS interop on render thread)
+    public override Task<AuthenticationState> GetAuthenticationStateAsync()
+        => Task.FromResult(_current);
+
+    // Called from App.razor OnAfterRenderAsync and after login/logout
+    public async Task InitializeAsync()
     {
         var user = await authService.GetCurrentUserAsync();
-        return new AuthenticationState(user);
+        _current = new AuthenticationState(user);
+        NotifyAuthenticationStateChanged(Task.FromResult(_current));
     }
 
-    public void NotifyStateChanged() => NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
+    public Task NotifyStateChanged() => InitializeAsync();
 }

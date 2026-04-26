@@ -1,3 +1,5 @@
+@inject JwtAuthStateProvider AuthState
+
 <Router AppAssembly="@typeof(App).Assembly">
     <Found Context="routeData">
         <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(Layout.MainLayout)">
@@ -17,3 +19,11 @@
         </LayoutView>
     </NotFound>
 </Router>
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await AuthState.InitializeAsync();
+    }
+}
