@@ -1,0 +1,231 @@
+@page "/settings"
+@attribute [Authorize]
+@inject HttpClient Http
+@inject Nucleus.Web.Services.AuthService AuthSvc
+@inject Nucleus.Web.Services.JwtAuthStateProvider AuthState
+@inject NavigationManager Nav
+
+<PageTitle>Settings — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Settings</h1>
+        <p class="page-subtitle">Account and security</p>
+    </div>
+</div>
+
+@if (_loadingProfile)
+{
+    <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+}
+else
+{
+    <!-- Profile -->
+    <div style="max-width:560px;display:flex;flex-direction:column;gap:24px;">
+        <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:28px;">
+            <div class="section-header" style="margin-top:0;">
+                <span class="section-title">Profile</span>
+            </div>
+
+            @if (_profileError != null)
+            {
+                <div class="auth-error" style="margin-bottom:16px;">@_profileError</div>
+            }
+            @if (_profileSaved)
+            {
+                <div style="margin-bottom:16px;padding:12px 16px;background:rgba(16,185,129,0.08);
+                            border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius);
+                            color:#10b981;font-weight:600;">Profile updated.</div>
+            }
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>FIRST NAME</label>
+                    <input class="form-input" @bind="_firstName" placeholder="Tim" />
+                </div>
+                <div class="form-group">
+                    <label>LAST NAME</label>
+                    <input class="form-input" @bind="_lastName" placeholder="K" />
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>EMAIL</label>
+                <input class="form-input" value="@_email" disabled style="opacity:0.6;cursor:not-allowed;" />
+            </div>
+
+            <div class="form-group">
+                <label>ROLE</label>
+                <input class="form-input" value="@_role" disabled style="opacity:0.6;cursor:not-allowed;" />
+            </div>
+
+            <button class="btn-primary" @onclick="SaveProfile" disabled="@_savingProfile" style="margin-top:8px;">
+                @(_savingProfile ? "Saving…" : "Save profile")
+            </button>
+        </div>
+
+        <!-- Change password -->
+        <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:28px;">
+            <div class="section-header" style="margin-top:0;">
+                <span class="section-title">Change password</span>
+            </div>
+
+            @if (_pwError != null)
+            {
+                <div class="auth-error" style="margin-bottom:16px;">@_pwError</div>
+            }
+            @if (_pwSaved)
+            {
+                <div style="margin-bottom:16px;padding:12px 16px;background:rgba(16,185,129,0.08);
+                            border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius);
+                            color:#10b981;font-weight:600;">Password changed. All other sessions have been signed out.</div>
+            }
+
+            <div class="form-group">
+                <label>CURRENT PASSWORD</label>
+                <input class="form-input" type="password" @bind="_currentPw" placeholder="••••••••" autocomplete="current-password" />
+            </div>
+            <div class="form-group">
+                <label>NEW PASSWORD <span class="label-hint">(8+ characters)</span></label>
+                <input class="form-input" type="password" @bind="_newPw" placeholder="••••••••" autocomplete="new-password" />
+            </div>
+            <div class="form-group">
+                <label>CONFIRM NEW PASSWORD</label>
+                <input class="form-input" type="password" @bind="_confirmPw" placeholder="••••••••" autocomplete="new-password" />
+            </div>
+
+            <button class="btn-primary" @onclick="ChangePassword" disabled="@_savingPw" style="margin-top:8px;">
+                @(_savingPw ? "Changing…" : "Change password")
+            </button>
+        </div>
+
+        <!-- Session -->
+        <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:28px;">
+            <div class="section-header" style="margin-top:0;">
+                <span class="section-title">Session</span>
+            </div>
+            <p style="font-size:14px;color:var(--color-muted);margin-bottom:16px;">
+                Sign out of this browser session. Your data is not affected.
+            </p>
+            <button class="btn-secondary" @onclick="SignOut">Sign out</button>
+        </div>
+    </div>
+}
+
+@code {
+    private string _firstName = "", _lastName = "", _email = "", _role = "";
+    private string _currentPw = "", _newPw = "", _confirmPw = "";
+    private bool _loadingProfile = true, _savingProfile, _savingPw;
+    private bool _profileSaved, _pwSaved;
+    private string? _profileError, _pwError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<MeResponse>("api/v1/auth/me");
+            if (resp?.Data != null)
+            {
+                _firstName = resp.Data.FirstName ?? "";
+                _lastName = resp.Data.LastName ?? "";
+                _email = resp.Data.Email ?? "";
+                _role = resp.Data.Role ?? "";
+            }
+        }
+        catch { }
+        finally { _loadingProfile = false; }
+    }
+
+    private async Task SaveProfile()
+    {
+        _profileError = null;
+        _profileSaved = false;
+        _savingProfile = true;
+        try
+        {
+            var resp = await Http.PutAsJsonAsync("api/v1/auth/profile", new
+            {
+                FirstName = _firstName.Trim(),
+                LastName = _lastName.Trim(),
+            });
+            if (resp.IsSuccessStatusCode)
+                _profileSaved = true;
+            else
+                _profileError = $"Save failed ({(int)resp.StatusCode})";
+        }
+        catch (Exception ex) { _profileError = ex.Message; }
+        finally { _savingProfile = false; }
+    }
+
+    private async Task ChangePassword()
+    {
+        _pwError = null;
+        _pwSaved = false;
+
+        if (string.IsNullOrWhiteSpace(_currentPw) || string.IsNullOrWhiteSpace(_newPw))
+        {
+            _pwError = "All password fields are required.";
+            return;
+        }
+        if (_newPw != _confirmPw)
+        {
+            _pwError = "New passwords do not match.";
+            return;
+        }
+        if (_newPw.Length < 8)
+        {
+            _pwError = "New password must be at least 8 characters.";
+            return;
+        }
+
+        _savingPw = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("api/v1/auth/change-password", new
+            {
+                CurrentPassword = _currentPw,
+                NewPassword = _newPw,
+            });
+
+            if (resp.IsSuccessStatusCode)
+            {
+                _pwSaved = true;
+                _currentPw = _newPw = _confirmPw = "";
+            }
+            else
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                _pwError = ExtractError(body);
+            }
+        }
+        catch (Exception ex) { _pwError = ex.Message; }
+        finally { _savingPw = false; }
+    }
+
+    private async Task SignOut()
+    {
+        await AuthSvc.LogoutAsync();
+        await AuthState.NotifyStateChanged();
+        Nav.NavigateTo("/login");
+    }
+
+    private static string ExtractError(string json)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("error", out var e)) return e.GetString() ?? "Error";
+        }
+        catch { }
+        return "Request failed";
+    }
+
+    private class UserData
+    {
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? Email { get; set; }
+        public string? Role { get; set; }
+    }
+    private record MeResponse(bool Success, UserData? Data);
+}
