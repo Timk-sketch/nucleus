@@ -34,7 +34,6 @@ public class BrandsController : ControllerBase
             req.WpSiteUrl, req.WpUsername, req.WpAppPassword,
             req.GhlLocationId, req.GhlApiKey, req.BrandVoice), ct);
 
-        // Kick off background provisioning
         BackgroundJob.Enqueue<BrandProvisioningJob>(job => job.RunAsync(result.BrandId));
 
         return CreatedAtAction(nameof(GetById), new { id = result.BrandId }, result);
@@ -70,6 +69,43 @@ public class BrandsController : ControllerBase
         return Ok(new { success = true, data = brand });
     }
 
+    [HttpPut("{id:guid}")]
+    [ProducesResponseType(200)]
+    [ProducesResponseType(404)]
+    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateBrandRequest req, CancellationToken ct)
+    {
+        var brand = await _db.Brands.FirstOrDefaultAsync(b => b.Id == id, ct);
+        if (brand is null) return NotFound();
+
+        brand.Name = req.Name ?? brand.Name;
+        brand.Domain = req.Domain ?? brand.Domain;
+        brand.PrimaryColor = req.PrimaryColor ?? brand.PrimaryColor;
+        brand.WpSiteUrl = req.WpSiteUrl ?? brand.WpSiteUrl;
+        brand.WpUsername = req.WpUsername ?? brand.WpUsername;
+        if (req.WpAppPassword != null) brand.WpAppPassword = req.WpAppPassword;
+        brand.GhlLocationId = req.GhlLocationId ?? brand.GhlLocationId;
+        if (req.GhlApiKey != null) brand.GhlApiKey = req.GhlApiKey;
+        brand.BrandVoice = req.BrandVoice ?? brand.BrandVoice;
+
+        await _db.SaveChangesAsync(ct);
+
+        return Ok(new { success = true, data = new { brand.Id, brand.Name, brand.Status } });
+    }
+
+    [HttpDelete("{id:guid}")]
+    [ProducesResponseType(204)]
+    [ProducesResponseType(404)]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        var brand = await _db.Brands.FirstOrDefaultAsync(b => b.Id == id, ct);
+        if (brand is null) return NotFound();
+
+        _db.Brands.Remove(brand);
+        await _db.SaveChangesAsync(ct);
+
+        return NoContent();
+    }
+
     [HttpGet("{id:guid}/provisioning-status")]
     [ProducesResponseType(200)]
     [ProducesResponseType(404)]
@@ -95,6 +131,17 @@ public record CreateBrandRequest(
     string Name,
     string Domain,
     string PrimaryColor,
+    string? WpSiteUrl,
+    string? WpUsername,
+    string? WpAppPassword,
+    string? GhlLocationId,
+    string? GhlApiKey,
+    string? BrandVoice);
+
+public record UpdateBrandRequest(
+    string? Name,
+    string? Domain,
+    string? PrimaryColor,
     string? WpSiteUrl,
     string? WpUsername,
     string? WpAppPassword,

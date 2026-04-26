@@ -1,0 +1,225 @@
+@page "/brands/{Id:guid}/edit"
+@attribute [Authorize]
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<PageTitle>Edit Brand — Nucleus</PageTitle>
+
+@if (_loading)
+{
+    <div class="loading-state">
+        <div class="spinner spinner--lg"></div>
+        <p>Loading brand…</p>
+    </div>
+}
+else if (_notFound)
+{
+    <div class="error-state">
+        <p>Brand not found.</p>
+        <a href="/brands" class="btn-secondary">Back to brands</a>
+    </div>
+}
+else
+{
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Edit Brand</h1>
+            <p class="page-subtitle">@_name</p>
+        </div>
+    </div>
+
+    <div style="max-width:600px;">
+        @if (_error != null)
+        {
+            <div class="auth-error" style="margin-bottom:20px;">@_error</div>
+        }
+        @if (_saved)
+        {
+            <div style="margin-bottom:20px;padding:12px 16px;background:rgba(16,185,129,0.08);
+                        border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius);
+                        color:#10b981;font-weight:600;">Changes saved.</div>
+        }
+
+        <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:28px;">
+            <div class="section-header" style="margin-top:0;">
+                <span class="section-title">Brand details</span>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>BRAND NAME</label>
+                    <input class="form-input" @bind="_name" placeholder="My Brand LLC" />
+                </div>
+                <div class="form-group">
+                    <label>PRIMARY COLOR</label>
+                    <input class="form-input" @bind="_color" type="color" style="height:42px;padding:4px 8px;" />
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>DOMAIN</label>
+                <input class="form-input" @bind="_domain" placeholder="mybrand.com" />
+            </div>
+
+            <div class="section-header">
+                <span class="section-title">WordPress <span class="label-hint" style="font-weight:400;">(optional)</span></span>
+            </div>
+
+            <div class="form-group">
+                <label>SITE URL</label>
+                <input class="form-input" @bind="_wpUrl" placeholder="https://mybrand.com" />
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>USERNAME</label>
+                    <input class="form-input" @bind="_wpUser" placeholder="admin" />
+                </div>
+                <div class="form-group">
+                    <label>APP PASSWORD <span class="label-hint">(leave blank to keep)</span></label>
+                    <input class="form-input" type="password" @bind="_wpPass" placeholder="••••••••" />
+                </div>
+            </div>
+
+            <div class="section-header">
+                <span class="section-title">GoHighLevel <span class="label-hint" style="font-weight:400;">(optional)</span></span>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>LOCATION ID</label>
+                    <input class="form-input" @bind="_ghlId" placeholder="abc123" />
+                </div>
+                <div class="form-group">
+                    <label>API KEY <span class="label-hint">(leave blank to keep)</span></label>
+                    <input class="form-input" type="password" @bind="_ghlKey" placeholder="••••••••" />
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>BRAND VOICE <span class="label-hint">(AI persona)</span></label>
+                <input class="form-input" @bind="_voice" placeholder="Professional, approachable…" />
+            </div>
+
+            <div style="display:flex;gap:12px;margin-top:24px;">
+                <button class="btn-primary" @onclick="Save" disabled="@_saving">
+                    @if (_saving)
+                    {
+                        <span class="spinner"></span>
+                        <span>Saving…</span>
+                    }
+                    else
+                    {
+                        <span>Save changes</span>
+                    }
+                </button>
+                <a href="/brands/@Id" class="btn-secondary">Cancel</a>
+            </div>
+        </div>
+
+        <div style="margin-top:24px;padding:20px;background:var(--color-surface);
+                    border:1px solid rgba(239,68,68,0.2);border-radius:var(--radius);">
+            <div class="section-title" style="color:#ef4444;margin-bottom:12px;">Danger zone</div>
+            <p style="font-size:14px;color:var(--color-muted);margin-bottom:16px;">
+                Permanently delete this brand and all its data. This cannot be undone.
+            </p>
+            <button class="btn-secondary" style="border-color:rgba(239,68,68,0.4);color:#ef4444;"
+                    @onclick="DeleteBrand" disabled="@_deleting">
+                @(_deleting ? "Deleting…" : "Delete brand")
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private string _name = "", _domain = "", _color = "#6366f1";
+    private string? _wpUrl, _wpUser, _wpPass, _ghlId, _ghlKey, _voice;
+    private bool _loading = true, _notFound, _saving, _deleting, _saved;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<BrandDetailResponse>($"api/v1/brands/{Id}");
+            if (resp?.Data == null) { _notFound = true; return; }
+            var b = resp.Data;
+            _name = b.Name;
+            _domain = b.Domain;
+            _color = b.PrimaryColor;
+            _wpUrl = b.WpSiteUrl;
+            _wpUser = b.WpUsername;
+            _ghlId = b.GhlLocationId;
+            _voice = b.BrandVoice;
+        }
+        catch { _notFound = true; }
+        finally { _loading = false; }
+    }
+
+    private async Task Save()
+    {
+        _error = null;
+        _saved = false;
+
+        if (string.IsNullOrWhiteSpace(_name) || string.IsNullOrWhiteSpace(_domain))
+        {
+            _error = "Name and domain are required.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var payload = new
+            {
+                Name = _name.Trim(),
+                Domain = _domain.Trim().ToLowerInvariant(),
+                PrimaryColor = _color,
+                WpSiteUrl = string.IsNullOrWhiteSpace(_wpUrl) ? null : _wpUrl.Trim(),
+                WpUsername = string.IsNullOrWhiteSpace(_wpUser) ? null : _wpUser.Trim(),
+                WpAppPassword = string.IsNullOrWhiteSpace(_wpPass) ? null : _wpPass,
+                GhlLocationId = string.IsNullOrWhiteSpace(_ghlId) ? null : _ghlId.Trim(),
+                GhlApiKey = string.IsNullOrWhiteSpace(_ghlKey) ? null : _ghlKey,
+                BrandVoice = string.IsNullOrWhiteSpace(_voice) ? null : _voice.Trim(),
+            };
+
+            var resp = await Http.PutAsJsonAsync($"api/v1/brands/{Id}", payload);
+            if (resp.IsSuccessStatusCode)
+                _saved = true;
+            else
+                _error = $"Save failed ({(int)resp.StatusCode})";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private async Task DeleteBrand()
+    {
+        _deleting = true;
+        try
+        {
+            var resp = await Http.DeleteAsync($"api/v1/brands/{Id}");
+            if (resp.IsSuccessStatusCode)
+                Nav.NavigateTo("/brands");
+            else
+                _error = $"Delete failed ({(int)resp.StatusCode})";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _deleting = false; }
+    }
+
+    private class BrandData
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string Domain { get; set; } = "";
+        public string PrimaryColor { get; set; } = "#6366f1";
+        public string? WpSiteUrl { get; set; }
+        public string? WpUsername { get; set; }
+        public string? GhlLocationId { get; set; }
+        public string? BrandVoice { get; set; }
+    }
+
+    private record BrandDetailResponse(bool Success, BrandData? Data);
+}

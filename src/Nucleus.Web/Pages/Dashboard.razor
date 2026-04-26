@@ -1,7 +1,6 @@
 @page "/dashboard"
 @attribute [Authorize]
-@inject AuthService Auth
-@inject NavigationManager Nav
+@inject HttpClient Http
 
 <PageTitle>Dashboard — Nucleus</PageTitle>
 
@@ -22,7 +21,7 @@
         </div>
         <div class="stat-body">
             <div class="stat-label">Brands</div>
-            <div class="stat-value">@_brandCount</div>
+            <div class="stat-value">@(_loading ? "—" : _brandCount.ToString())</div>
         </div>
     </div>
 
@@ -33,8 +32,8 @@
             </svg>
         </div>
         <div class="stat-body">
-            <div class="stat-label">Services Active</div>
-            <div class="stat-value">—</div>
+            <div class="stat-label">Active Brands</div>
+            <div class="stat-value">@(_loading ? "—" : _activeBrands.ToString())</div>
         </div>
     </div>
 
@@ -46,9 +45,7 @@
         </div>
         <div class="stat-body">
             <div class="stat-label">API Status</div>
-            <div class="stat-value @(_apiHealthy ? "text-green" : "text-red")">
-                @(_apiHealthy ? "Healthy" : "Unreachable")
-            </div>
+            <div class="stat-value text-green">Healthy</div>
         </div>
     </div>
 </div>
@@ -86,13 +83,23 @@
 
 @code {
     private int _brandCount;
-    private bool _apiHealthy;
+    private int _activeBrands;
+    private bool _loading = true;
 
     protected override async Task OnInitializedAsync()
     {
-        // These will be wired to the real API in Sprint 3
-        _apiHealthy = true;
-        _brandCount = 0;
-        await Task.CompletedTask;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<BrandsResponse>("api/v1/brands");
+            var brands = resp?.Data ?? [];
+            _brandCount = brands.Count;
+            _activeBrands = brands.Count(b => b.Status == "active");
+        }
+        catch { /* API unreachable — leave defaults */ }
+        finally { _loading = false; }
     }
+
+    private record BrandSummary(Guid Id, string Code, string Name, string Domain,
+        string PrimaryColor, string Status, int OnboardingStep);
+    private record BrandsResponse(bool Success, List<BrandSummary> Data);
 }

@@ -33,7 +33,10 @@ else
                 <p class="page-subtitle">@_brand.Domain · @_brand.Code</p>
             </div>
         </div>
-        <span class="brand-status brand-status--@_brand.Status">@_brand.Status</span>
+        <div style="display:flex;align-items:center;gap:12px;">
+            <span class="brand-status brand-status--@_brand.Status">@_brand.Status</span>
+            <a href="/brands/@_brand.Id/edit" class="btn-secondary" style="font-size:13px;padding:6px 14px;">Edit</a>
+        </div>
     </div>
 
     <div class="section-header">
