@@ -39,6 +39,8 @@ public class NucleusDbContext(
             e.Property(u => u.Role).HasMaxLength(50).HasDefaultValue("BrandEditor");
         });
 
+        var enc = new EncryptedStringConverter();
+
         builder.Entity<Brand>(e =>
         {
             e.ToTable("brands");
@@ -49,6 +51,11 @@ public class NucleusDbContext(
             e.Property(b => b.Slug).HasMaxLength(200);
             e.Property(b => b.Status).HasMaxLength(50).HasDefaultValue("onboarding");
             e.Property(b => b.ServicesProvisioned).HasColumnType("jsonb").HasDefaultValue("{}");
+            // Encrypt credentials at rest — decrypted transparently on read
+            e.Property(b => b.WpAppPassword).HasConversion(enc);
+            e.Property(b => b.GhlApiKey).HasConversion(enc);
+            e.Property(b => b.DripApiToken).HasConversion(enc);
+            e.Property(b => b.SendgridApiKey).HasConversion(enc);
             e.HasMany(b => b.ProvisioningSteps)
                 .WithOne(s => s.Brand)
                 .HasForeignKey(s => s.BrandId);

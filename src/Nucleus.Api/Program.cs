@@ -1,10 +1,12 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using FluentValidation;
 using Hangfire;
 using Hangfire.PostgreSql;
 using MediatR;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -67,14 +69,35 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(opts =>
     opts.Password.RequiredLength = 8;
     opts.Password.RequireNonAlphanumeric = false;
     opts.User.RequireUniqueEmail = true;
+    // Account lockout: 5 failed attempts → 15 min lockout
+    opts.Lockout.MaxFailedAccessAttempts = 5;
+    opts.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+    opts.Lockout.AllowedForNewUsers = true;
 })
 .AddEntityFrameworkStores<NucleusDbContext>()
 .AddDefaultTokenProviders();
+
+// ── Credential encryption (AES-256) ───────────────────────────────────────
+var encKeyStr = builder.Configuration["CREDENTIAL_ENCRYPTION_KEY"];
+if (!string.IsNullOrEmpty(encKeyStr))
+{
+    EncryptedStringConverter.SetEncryptionKey(Convert.FromBase64String(encKeyStr));
+}
+else if (!builder.Environment.IsDevelopment())
+{
+    throw new InvalidOperationException(
+        "CREDENTIAL_ENCRYPTION_KEY is required in production. " +
+        "Generate one with: openssl rand -base64 32");
+}
 
 // ── JWT Auth ──────────────────────────────────────────────────────────────
 var jwtSecret = builder.Configuration["Jwt:Key"]
     ?? builder.Configuration["JWT_SECRET"]
     ?? throw new InvalidOperationException("JWT secret not set (Jwt__Key or JWT_SECRET)");
+
+if (jwtSecret.Length < 32)
+    throw new InvalidOperationException(
+        "JWT_SECRET must be at least 32 characters for HS256 security.");
 
 builder.Services.AddAuthentication(opts =>
 {
@@ -156,19 +179,51 @@ builder.Services.AddSwaggerGen(c =>
 
 builder.Services.AddControllers();
 
-// ── CORS (dev-friendly) ───────────────────────────────────────────────────
+// ── Rate limiting ─────────────────────────────────────────────────────────
+// "auth" policy: 10 requests/minute per IP on login/register/refresh endpoints
+builder.Services.AddRateLimiter(opts =>
+{
+    opts.AddPolicy("auth", ctx => RateLimitPartition.GetFixedWindowLimiter(
+        ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(1),
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            QueueLimit = 0,
+        }));
+    opts.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    opts.OnRejected = async (ctx, _) =>
+    {
+        ctx.HttpContext.Response.ContentType = "application/json";
+        await ctx.HttpContext.Response.WriteAsync(
+            "{\"success\":false,\"error\":\"Too many requests. Please wait and try again.\"}");
+    };
+});
+
+// ── CORS ──────────────────────────────────────────────────────────────────
+// In dev: allow any origin. In production: restrict to ALLOWED_ORIGINS env var.
+var allowedOrigins = builder.Configuration["ALLOWED_ORIGINS"]
+    ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    ?? [];
+
 builder.Services.AddCors(opts =>
-    opts.AddPolicy("NucleusPolicy", p => p
-        .AllowAnyHeader()
-        .AllowAnyMethod()
-        .AllowCredentials()
-        .SetIsOriginAllowed(_ => true)));
+    opts.AddPolicy("NucleusPolicy", p =>
+    {
+        if (builder.Environment.IsDevelopment() || allowedOrigins.Length == 0)
+            p.SetIsOriginAllowed(_ => true);
+        else
+            p.WithOrigins(allowedOrigins);
+
+        p.AllowAnyHeader().AllowAnyMethod().AllowCredentials();
+    }));
 
 var app = builder.Build();
 
 app.UseBlazorFrameworkFiles();    // serve Blazor WASM _framework/ files
 app.UseStaticFiles();              // serve wwwroot static assets
 
+app.UseRateLimiter();
 app.UseMiddleware<TenantMiddleware>();
 app.UseSerilogRequestLogging();
 app.UseCors("NucleusPolicy");

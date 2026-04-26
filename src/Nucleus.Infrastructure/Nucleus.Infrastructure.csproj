@@ -27,6 +27,6 @@
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="9.0.4" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.9.0" />
     <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.9.0" />
-    <PackageReference Include="MailKit" Version="4.9.*" />
+    <PackageReference Include="MailKit" Version="4.16.*" />
   </ItemGroup>
 </Project>

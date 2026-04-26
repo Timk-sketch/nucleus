@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Nucleus.Application.Common;
 using Nucleus.Domain.Entities;
@@ -20,6 +21,7 @@ public class AuthController(
 {
     // POST /api/v1/auth/register
     [HttpPost("register")]
+    [EnableRateLimiting("auth")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest req)
     {
         if (await userManager.FindByEmailAsync(req.Email) != null)
@@ -65,13 +67,20 @@ public class AuthController(
 
     // POST /api/v1/auth/login
     [HttpPost("login")]
+    [EnableRateLimiting("auth")]
     public async Task<IActionResult> Login([FromBody] LoginRequest req)
     {
         var user = await userManager.FindByEmailAsync(req.Email);
         if (user == null) return Unauthorized(ApiResponse.Fail("Invalid credentials"));
 
-        var result = await signInManager.CheckPasswordSignInAsync(user, req.Password, false);
-        if (!result.Succeeded) return Unauthorized(ApiResponse.Fail("Invalid credentials"));
+        var result = await signInManager.CheckPasswordSignInAsync(user, req.Password, lockoutOnFailure: true);
+        if (!result.Succeeded)
+        {
+            var error = result.IsLockedOut
+                ? "Account locked due to too many failed attempts. Try again in 15 minutes."
+                : "Invalid credentials";
+            return Unauthorized(ApiResponse.Fail(error));
+        }
 
         var tokenPair = jwtService.GenerateTokenPair(user);
         var refreshToken = new Nucleus.Domain.Entities.RefreshToken
@@ -88,6 +97,7 @@ public class AuthController(
 
     // POST /api/v1/auth/refresh
     [HttpPost("refresh")]
+    [EnableRateLimiting("auth")]
     public async Task<IActionResult> Refresh([FromBody] RefreshRequest req)
     {
         var stored = await db.RefreshTokens
