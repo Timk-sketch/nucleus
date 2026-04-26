@@ -11,8 +11,8 @@ COPY src/Nucleus.Application/Nucleus.Application.csproj src/Nucleus.Application/
 COPY src/Nucleus.Infrastructure/Nucleus.Infrastructure.csproj src/Nucleus.Infrastructure/
 COPY src/Nucleus.Api/Nucleus.Api.csproj src/Nucleus.Api/
 COPY src/Nucleus.Web/Nucleus.Web.csproj src/Nucleus.Web/
-# Restore entire solution so Blazor WASM project.assets.json is generated before publish
-RUN dotnet restore Nucleus.sln
+# Restore Api + Web explicitly (solution restore fails — test projects not yet copied)
+RUN dotnet restore src/Nucleus.Api/Nucleus.Api.csproj && dotnet restore src/Nucleus.Web/Nucleus.Web.csproj
 COPY . .
 # Publishing the API also builds + embeds the Blazor WASM client (via ProjectReference)
 RUN dotnet publish src/Nucleus.Api/Nucleus.Api.csproj -c Release -o /publish
