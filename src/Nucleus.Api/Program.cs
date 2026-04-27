@@ -148,6 +148,8 @@ builder.Services.AddHangfire(cfg => cfg
 builder.Services.AddHangfireServer();
 builder.Services.AddScoped<IBackgroundJobService, HangfireBackgroundJobService>();
 builder.Services.AddScoped<BrandProvisioningJob>();
+builder.Services.AddScoped<GhlContactSyncJob>();
+builder.Services.AddScoped<KeywordRankJob>();
 
 // ── HTTP clients ──────────────────────────────────────────────────────────
 builder.Services.AddHttpClient("provisioning", client =>
@@ -158,6 +160,16 @@ builder.Services.AddHttpClient("wordpress", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(20);
     client.DefaultRequestHeaders.Add("User-Agent", "Nucleus/1.0");
+});
+builder.Services.AddHttpClient("ghl", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+    client.DefaultRequestHeaders.Add("User-Agent", "Nucleus/1.0");
+});
+builder.Services.AddHttpClient("dataforseo", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(60);
+    client.BaseAddress = new Uri("https://api.dataforseo.com");
 });
 
 // ── Email service (MailKit) ────────────────────────────────────────────────
@@ -253,14 +265,27 @@ app.MapHub<ProvisioningHub>("/hubs/provisioning");
 app.MapHangfireDashboard("/hangfire");
 app.MapFallbackToFile("index.html"); // SPA client-side routing fallback
 
-// EnsureCreated runs in background so the app starts listening immediately
-// (Railway healthcheck needs a fast response — don't block on DB init)
+// DB init runs in background so Railway healthcheck gets a fast first response.
+// MigrateAsync applies pending EF migrations when they exist.
+// Falls back to EnsureCreated when no migrations have been added yet (dev / first deploy).
 _ = Task.Run(async () =>
 {
     await Task.Delay(1000); // brief pause so DI is fully warm
     using var scope = app.Services.CreateScope();
     var dbCtx = scope.ServiceProvider.GetRequiredService<NucleusDbContext>();
-    await dbCtx.Database.EnsureCreatedAsync();
+    try
+    {
+        var pending = await dbCtx.Database.GetPendingMigrationsAsync();
+        if (pending.Any())
+            await dbCtx.Database.MigrateAsync();
+        else
+            await dbCtx.Database.EnsureCreatedAsync();
+    }
+    catch
+    {
+        // No migrations registered — fall back to EnsureCreated
+        await dbCtx.Database.EnsureCreatedAsync();
+    }
 });
 
 app.Run();

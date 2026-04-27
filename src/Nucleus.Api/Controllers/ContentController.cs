@@ -148,6 +148,34 @@ public class ContentController(
         return Ok(ApiResponse.Ok(new { keyword.Id, keyword.Keyword, keyword.TargetUrl, keyword.Notes }));
     }
 
+    // GET /api/v1/brands/{brandId}/keywords/ranks
+    // Returns latest rank snapshot for every keyword in the brand
+    [HttpGet("keywords/ranks")]
+    public async Task<IActionResult> ListRanks(Guid brandId, CancellationToken ct)
+    {
+        var brand = await GetBrand(brandId, ct);
+        if (brand is null) return NotFound(ApiResponse.Fail("Brand not found."));
+
+        // Latest rank per keyword (one row per keyword)
+        var ranks = await db.KeywordRanks
+            .Where(r => r.BrandId == brandId)
+            .GroupBy(r => r.KeywordId)
+            .Select(g => g.OrderByDescending(r => r.CheckedAt).First())
+            .Select(r => new
+            {
+                r.KeywordId,
+                r.Position,
+                r.PreviousPosition,
+                r.SearchVolume,
+                r.KeywordDifficulty,
+                r.RankedUrl,
+                r.CheckedAt,
+            })
+            .ToListAsync(ct);
+
+        return Ok(ApiResponse.Ok(ranks));
+    }
+
     // DELETE /api/v1/brands/{brandId}/keywords/{keywordId}
     [HttpDelete("keywords/{keywordId:guid}")]
     public async Task<IActionResult> RemoveKeyword(Guid brandId, Guid keywordId, CancellationToken ct)

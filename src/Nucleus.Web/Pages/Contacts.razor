@@ -1,0 +1,191 @@
+@page "/contacts"
+@attribute [Authorize]
+@inject HttpClient Http
+
+<PageTitle>Contacts — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Contacts</h1>
+        <p class="page-subtitle">GHL contacts synced per brand</p>
+    </div>
+</div>
+
+@if (_brands.Count > 1)
+{
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px;">
+        @foreach (var b in _brands)
+        {
+            <button @onclick="() => SelectBrand(b.Id)" style="@BrandBtnStyle(b.Id)">@b.Name</button>
+        }
+    </div>
+}
+
+@if (_selectedBrandId == Guid.Empty)
+{
+    <div style="padding:48px;text-align:center;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);color:var(--color-muted);">
+        Select a brand above to view contacts.
+    </div>
+}
+else
+{
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+        <input @bind="_search" @bind:event="oninput" @onkeyup="OnSearchKey"
+               placeholder="Search name or email…"
+               style="flex:1;padding:8px 12px;border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-surface);font-size:14px;" />
+        <button @onclick="Search" class="btn-secondary" style="white-space:nowrap;">Search</button>
+        <button @onclick="TriggerSync" disabled="@_syncing" class="btn-primary" style="white-space:nowrap;">
+            @(_syncing ? "Queued…" : "Sync GHL")
+        </button>
+    </div>
+
+    @if (!_ghlConfigured)
+    {
+        <div style="padding:16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:var(--radius);color:#f59e0b;font-size:13px;margin-bottom:16px;">
+            GHL is not configured for this brand. Add a GHL Location ID and API Key in brand settings.
+        </div>
+    }
+
+    @if (_loading)
+    {
+        <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+    }
+    else if (_contacts.Count == 0)
+    {
+        <div style="padding:48px;text-align:center;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);color:var(--color-muted);">
+            No contacts yet. Click <strong>Sync GHL</strong> to pull contacts from GoHighLevel.
+        </div>
+    }
+    else
+    {
+        <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;">
+            <div style="padding:12px 16px;border-bottom:1px solid var(--color-border);display:flex;align-items:center;justify-content:space-between;">
+                <span style="font-size:13px;color:var(--color-muted);">@_total contacts total</span>
+                <span style="font-size:13px;color:var(--color-muted);">Page @_page</span>
+            </div>
+            <table style="width:100%;border-collapse:collapse;">
+                <thead>
+                    <tr style="background:rgba(0,0,0,0.02);">
+                        <th style="padding:10px 16px;text-align:left;font-size:12px;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:.04em;">Name</th>
+                        <th style="padding:10px 16px;text-align:left;font-size:12px;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:.04em;">Email</th>
+                        <th style="padding:10px 16px;text-align:left;font-size:12px;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:.04em;">Phone</th>
+                        <th style="padding:10px 16px;text-align:left;font-size:12px;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:.04em;">Added</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (int i = 0; i < _contacts.Count; i++)
+                    {
+                        var c = _contacts[i];
+                        var isLast = i == _contacts.Count - 1;
+                        var fullName = ((c.FirstName ?? "") + " " + (c.LastName ?? "")).Trim();
+                        <tr style="@(isLast ? "" : "border-bottom:1px solid var(--color-border);")">
+                            <td style="padding:12px 16px;font-size:14px;font-weight:600;">
+                                @if (string.IsNullOrEmpty(fullName)) { <span style="color:var(--color-muted);">—</span> }
+                                else { @fullName }
+                            </td>
+                            <td style="padding:12px 16px;font-size:13px;color:var(--color-muted);">@(c.Email ?? "—")</td>
+                            <td style="padding:12px 16px;font-size:13px;color:var(--color-muted);">@(c.Phone ?? "—")</td>
+                            <td style="padding:12px 16px;font-size:12px;color:var(--color-muted);">
+                                @(c.GhlCreatedAt.HasValue ? c.GhlCreatedAt.Value.ToString("MMM d, yyyy") : "—")
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (_total > 50)
+        {
+            <div style="display:flex;gap:8px;margin-top:12px;justify-content:center;">
+                @if (_page > 1) { <button @onclick="PrevPage" class="btn-secondary">← Prev</button> }
+                @if (_contacts.Count == 50) { <button @onclick="NextPage" class="btn-secondary">Next →</button> }
+            </div>
+        }
+    }
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private Guid _selectedBrandId;
+    private List<ContactItem> _contacts = [];
+    private int _total;
+    private int _page = 1;
+    private string _search = "";
+    private bool _loading;
+    private bool _syncing;
+    private bool _ghlConfigured = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<BrandsWrapper>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count == 1) await SelectBrand(_brands[0].Id);
+    }
+
+    private async Task SelectBrand(Guid id)
+    {
+        _selectedBrandId = id;
+        _page = 1;
+        _search = "";
+        await LoadContacts();
+    }
+
+    private async Task LoadContacts()
+    {
+        _loading = true;
+        try
+        {
+            var url = $"api/v1/brands/{_selectedBrandId}/contacts?page={_page}";
+            if (!string.IsNullOrWhiteSpace(_search)) url += $"&search={Uri.EscapeDataString(_search)}";
+            var resp = await Http.GetFromJsonAsync<ContactsWrapper>(url);
+            _contacts = resp?.Data?.Contacts ?? [];
+            _total = resp?.Data?.Total ?? 0;
+            _ghlConfigured = resp?.Data?.GhlConfigured ?? true;
+        }
+        catch { _contacts = []; }
+        finally { _loading = false; }
+    }
+
+    private async Task Search() { _page = 1; await LoadContacts(); }
+    private async Task OnSearchKey(KeyboardEventArgs e) { if (e.Key == "Enter") await Search(); }
+    private async Task NextPage() { _page++; await LoadContacts(); }
+    private async Task PrevPage() { if (_page > 1) { _page--; await LoadContacts(); } }
+
+    private async Task TriggerSync()
+    {
+        _syncing = true;
+        try { await Http.PostAsync($"api/v1/brands/{_selectedBrandId}/contacts/sync", null); }
+        finally
+        {
+            await Task.Delay(1500);
+            _syncing = false;
+            await LoadContacts();
+        }
+    }
+
+    private string BrandBtnStyle(Guid id) => id == _selectedBrandId
+        ? "padding:6px 16px;border-radius:999px;border:1px solid #6366f1;background:#6366f1;color:white;cursor:pointer;font-size:13px;font-weight:600;"
+        : "padding:6px 16px;border-radius:999px;border:1px solid var(--color-border);background:transparent;color:inherit;cursor:pointer;font-size:13px;font-weight:600;";
+
+    private record BrandItem(Guid Id, string Name, string Status);
+    private record BrandsWrapper(bool Success, List<BrandItem>? Data);
+
+    private class ContactItem
+    {
+        public Guid Id { get; set; }
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? Email { get; set; }
+        public string? Phone { get; set; }
+        public DateTimeOffset? GhlCreatedAt { get; set; }
+    }
+
+    private class ContactsData
+    {
+        public List<ContactItem> Contacts { get; set; } = [];
+        public int Total { get; set; }
+        public bool GhlConfigured { get; set; }
+    }
+
+    private record ContactsWrapper(bool Success, ContactsData? Data);
+}

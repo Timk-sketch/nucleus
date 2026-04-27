@@ -9,6 +9,9 @@ public interface INucleusDbContext
     DbSet<Brand> Brands { get; }
     DbSet<BrandProvisioningStep> BrandProvisioningSteps { get; }
     DbSet<BrandKeyword> BrandKeywords { get; }
+    DbSet<GhlContact> GhlContacts { get; }
+    DbSet<KeywordRank> KeywordRanks { get; }
+    DbSet<EmailCampaign> EmailCampaigns { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

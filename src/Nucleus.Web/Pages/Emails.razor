@@ -1,0 +1,253 @@
+@page "/emails"
+@attribute [Authorize]
+@inject HttpClient Http
+
+<PageTitle>Email Campaigns — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Email Campaigns</h1>
+        <p class="page-subtitle">Create and send campaigns to your contacts</p>
+    </div>
+    <button @onclick="() => _showComposer = true" class="btn-primary"
+            style="display:inline-flex;align-items:center;gap:6px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        New Campaign
+    </button>
+</div>
+
+@if (_brands.Count > 1)
+{
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px;">
+        @foreach (var b in _brands)
+        {
+            <button @onclick="() => SelectBrand(b.Id)" style="@BrandBtnStyle(b.Id)">@b.Name</button>
+        }
+    </div>
+}
+
+@if (_selectedBrandId == Guid.Empty)
+{
+    <div style="padding:48px;text-align:center;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);color:var(--color-muted);">
+        Select a brand to manage campaigns.
+    </div>
+}
+else if (_loading)
+{
+    <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+}
+else if (_campaigns.Count == 0)
+{
+    <div style="padding:48px;text-align:center;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);color:var(--color-muted);">
+        No campaigns yet. Click <strong>New Campaign</strong> to create one.
+    </div>
+}
+else
+{
+    <div style="display:flex;flex-direction:column;gap:10px;">
+        @foreach (var c in _campaigns)
+        {
+            <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:16px 20px;display:flex;align-items:center;gap:16px;">
+                <div style="flex:1;min-width:0;">
+                    <div style="font-weight:700;font-size:15px;margin-bottom:4px;">@c.Subject</div>
+                    <div style="font-size:12px;color:var(--color-muted);">
+                        Created @c.CreatedAt.ToString("MMM d, yyyy")
+                        @if (c.SentAt.HasValue)
+                        {
+                            <span> · Sent @c.SentAt.Value.ToString("MMM d") to @c.RecipientCount recipients</span>
+                        }
+                    </div>
+                </div>
+                <span style="font-size:11px;padding:3px 10px;border-radius:999px;font-weight:700;background:@StatusBg(c.Status);color:@StatusColor(c.Status);">
+                    @c.Status
+                </span>
+                @if (c.Status == "draft")
+                {
+                    <button @onclick="() => OpenSend(c)" class="btn-primary" style="font-size:12px;padding:6px 14px;">Send</button>
+                    <button @onclick="() => DeleteCampaign(c.Id)" style="font-size:12px;padding:6px 14px;background:none;border:1px solid var(--color-border);border-radius:var(--radius);cursor:pointer;color:var(--color-muted);">Delete</button>
+                }
+            </div>
+        }
+    </div>
+}
+
+@if (_showComposer && _selectedBrandId != Guid.Empty)
+{
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;display:flex;align-items:center;justify-content:center;" @onclick="() => _showComposer = false">
+        <div style="background:var(--color-surface);border-radius:var(--radius);padding:32px;width:560px;max-width:95vw;max-height:90vh;overflow:auto;" @onclick:stopPropagation>
+            <h2 style="margin:0 0 20px;font-size:18px;">New Campaign</h2>
+            <div style="margin-bottom:16px;">
+                <label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">Subject</label>
+                <input @bind="_newSubject" placeholder="Email subject line…"
+                       style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--color-border);border-radius:var(--radius);font-size:14px;background:var(--color-background);" />
+            </div>
+            <div style="margin-bottom:24px;">
+                <label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">Body (HTML)</label>
+                <textarea @bind="_newBody" rows="10" placeholder="&lt;p&gt;Hello!&lt;/p&gt;"
+                          style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--color-border);border-radius:var(--radius);font-size:13px;font-family:monospace;background:var(--color-background);resize:vertical;"></textarea>
+            </div>
+            @if (!string.IsNullOrEmpty(_composerError))
+            {
+                <div style="padding:10px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);color:#ef4444;font-size:13px;margin-bottom:16px;">@_composerError</div>
+            }
+            <div style="display:flex;gap:8px;justify-content:flex-end;">
+                <button @onclick="() => _showComposer = false" class="btn-secondary">Cancel</button>
+                <button @onclick="SaveDraft" disabled="@_saving" class="btn-primary">@(_saving ? "Saving…" : "Save Draft")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_sendingCampaign is not null)
+{
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;display:flex;align-items:center;justify-content:center;" @onclick="() => _sendingCampaign = null">
+        <div style="background:var(--color-surface);border-radius:var(--radius);padding:32px;width:480px;max-width:95vw;" @onclick:stopPropagation>
+            <h2 style="margin:0 0 8px;font-size:18px;">Send "@_sendingCampaign.Subject"</h2>
+            <p style="margin:0 0 20px;font-size:13px;color:var(--color-muted);">Enter recipient emails separated by commas.</p>
+            <textarea @bind="_sendToEmails" rows="4" placeholder="alice@example.com, bob@example.com"
+                      style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--color-border);border-radius:var(--radius);font-size:13px;background:var(--color-background);resize:vertical;margin-bottom:16px;"></textarea>
+            @if (!string.IsNullOrEmpty(_sendError))
+            {
+                <div style="padding:10px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);color:#ef4444;font-size:13px;margin-bottom:16px;">@_sendError</div>
+            }
+            <div style="display:flex;gap:8px;justify-content:flex-end;">
+                <button @onclick="() => _sendingCampaign = null" class="btn-secondary">Cancel</button>
+                <button @onclick="SendCampaign" disabled="@_sending" class="btn-primary">@(_sending ? "Sending…" : "Send")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private Guid _selectedBrandId;
+    private List<CampaignItem> _campaigns = [];
+    private bool _loading;
+
+    private bool _showComposer;
+    private string _newSubject = "";
+    private string _newBody = "";
+    private string _composerError = "";
+    private bool _saving;
+
+    private CampaignItem? _sendingCampaign;
+    private string _sendToEmails = "";
+    private string _sendError = "";
+    private bool _sending;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<BrandsWrapper>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count == 1) await SelectBrand(_brands[0].Id);
+    }
+
+    private async Task SelectBrand(Guid id)
+    {
+        _selectedBrandId = id;
+        await LoadCampaigns();
+    }
+
+    private async Task LoadCampaigns()
+    {
+        _loading = true;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<CampaignsWrapper>($"api/v1/brands/{_selectedBrandId}/campaigns");
+            _campaigns = resp?.Data ?? [];
+        }
+        catch { _campaigns = []; }
+        finally { _loading = false; }
+    }
+
+    private async Task SaveDraft()
+    {
+        _composerError = "";
+        if (string.IsNullOrWhiteSpace(_newSubject)) { _composerError = "Subject is required."; return; }
+        _saving = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync(
+                $"api/v1/brands/{_selectedBrandId}/campaigns",
+                new { Subject = _newSubject, HtmlBody = _newBody });
+            if (resp.IsSuccessStatusCode)
+            {
+                _showComposer = false;
+                _newSubject = _newBody = "";
+                await LoadCampaigns();
+            }
+            else { _composerError = "Failed to save. Try again."; }
+        }
+        finally { _saving = false; }
+    }
+
+    private void OpenSend(CampaignItem c) { _sendingCampaign = c; _sendToEmails = ""; _sendError = ""; }
+
+    private async Task SendCampaign()
+    {
+        _sendError = "";
+        if (string.IsNullOrWhiteSpace(_sendToEmails)) { _sendError = "Enter at least one recipient."; return; }
+        _sending = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync(
+                $"api/v1/brands/{_selectedBrandId}/campaigns/{_sendingCampaign!.Id}/send",
+                new { ToEmails = _sendToEmails });
+            if (resp.IsSuccessStatusCode)
+            {
+                _sendingCampaign = null;
+                await LoadCampaigns();
+            }
+            else
+            {
+                var err = await resp.Content.ReadFromJsonAsync<ErrorWrapper>();
+                _sendError = err?.Error ?? "Send failed. Check SMTP configuration.";
+            }
+        }
+        finally { _sending = false; }
+    }
+
+    private async Task DeleteCampaign(Guid id)
+    {
+        await Http.DeleteAsync($"api/v1/brands/{_selectedBrandId}/campaigns/{id}");
+        await LoadCampaigns();
+    }
+
+    private string BrandBtnStyle(Guid id) => id == _selectedBrandId
+        ? "padding:6px 16px;border-radius:999px;border:1px solid #6366f1;background:#6366f1;color:white;cursor:pointer;font-size:13px;font-weight:600;"
+        : "padding:6px 16px;border-radius:999px;border:1px solid var(--color-border);background:transparent;color:inherit;cursor:pointer;font-size:13px;font-weight:600;";
+
+    private static string StatusBg(string s) => s switch
+    {
+        "sent"    => "rgba(16,185,129,0.1)",
+        "failed"  => "rgba(239,68,68,0.1)",
+        "sending" => "rgba(99,102,241,0.1)",
+        _         => "rgba(0,0,0,0.05)",
+    };
+
+    private static string StatusColor(string s) => s switch
+    {
+        "sent"    => "#10b981",
+        "failed"  => "#ef4444",
+        "sending" => "#6366f1",
+        _         => "var(--color-muted)",
+    };
+
+    private record BrandItem(Guid Id, string Name, string Status);
+    private record BrandsWrapper(bool Success, List<BrandItem>? Data);
+
+    private class CampaignItem
+    {
+        public Guid Id { get; set; }
+        public string Subject { get; set; } = "";
+        public string Status { get; set; } = "draft";
+        public int RecipientCount { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+        public DateTimeOffset? SentAt { get; set; }
+    }
+
+    private record CampaignsWrapper(bool Success, List<CampaignItem>? Data);
+    private record ErrorWrapper(bool Success, string? Error);
+}

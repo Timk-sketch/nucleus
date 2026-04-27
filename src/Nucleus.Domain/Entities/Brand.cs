@@ -35,4 +35,5 @@ public class Brand : TenantEntity
 
     public ICollection<BrandProvisioningStep> ProvisioningSteps { get; set; } = [];
     public ICollection<BrandKeyword> Keywords { get; set; } = [];
+    public ICollection<EmailCampaign> EmailCampaigns { get; set; } = [];
 }

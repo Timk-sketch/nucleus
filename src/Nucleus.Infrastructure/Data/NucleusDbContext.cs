@@ -16,6 +16,9 @@ public class NucleusDbContext(
     public DbSet<BrandProvisioningStep> BrandProvisioningSteps => Set<BrandProvisioningStep>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<BrandKeyword> BrandKeywords => Set<BrandKeyword>();
+    public DbSet<GhlContact> GhlContacts => Set<GhlContact>();
+    public DbSet<KeywordRank> KeywordRanks => Set<KeywordRank>();
+    public DbSet<EmailCampaign> EmailCampaigns => Set<EmailCampaign>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -70,6 +73,36 @@ public class NucleusDbContext(
             e.Property(k => k.TargetUrl).HasMaxLength(500);
             e.Property(k => k.Notes).HasMaxLength(1000);
             e.HasOne(k => k.Brand).WithMany(b => b.Keywords).HasForeignKey(k => k.BrandId);
+            e.HasMany(k => k.Ranks).WithOne(r => r.Keyword).HasForeignKey(r => r.KeywordId);
+        });
+
+        builder.Entity<GhlContact>(e =>
+        {
+            e.ToTable("ghl_contacts");
+            e.HasKey(c => c.Id);
+            e.Property(c => c.GhlContactId).HasMaxLength(100).IsRequired();
+            e.Property(c => c.FirstName).HasMaxLength(200);
+            e.Property(c => c.LastName).HasMaxLength(200);
+            e.Property(c => c.Email).HasMaxLength(300);
+            e.Property(c => c.Phone).HasMaxLength(50);
+            e.HasIndex(c => new { c.BrandId, c.GhlContactId }).IsUnique();
+            e.HasOne(c => c.Brand).WithMany().HasForeignKey(c => c.BrandId);
+        });
+
+        builder.Entity<KeywordRank>(e =>
+        {
+            e.ToTable("keyword_ranks");
+            e.HasKey(r => r.Id);
+            e.Property(r => r.RankedUrl).HasMaxLength(500);
+        });
+
+        builder.Entity<EmailCampaign>(e =>
+        {
+            e.ToTable("email_campaigns");
+            e.HasKey(c => c.Id);
+            e.Property(c => c.Subject).HasMaxLength(500).IsRequired();
+            e.Property(c => c.Status).HasMaxLength(50).HasDefaultValue("draft");
+            e.HasOne(c => c.Brand).WithMany().HasForeignKey(c => c.BrandId);
         });
 
         builder.Entity<BrandProvisioningStep>(e =>
