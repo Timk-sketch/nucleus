@@ -18,6 +18,7 @@ using Nucleus.Domain.Entities;
 using Nucleus.Application.Common.Interfaces;
 using Nucleus.Infrastructure.Auth;
 using Nucleus.Infrastructure.Data;
+using Nucleus.Infrastructure.Email;
 using Nucleus.Infrastructure.Jobs;
 using Nucleus.Infrastructure.Multitenancy;
 using Serilog;
@@ -147,6 +148,15 @@ builder.Services.AddHangfire(cfg => cfg
 builder.Services.AddHangfireServer();
 builder.Services.AddScoped<IBackgroundJobService, HangfireBackgroundJobService>();
 builder.Services.AddScoped<BrandProvisioningJob>();
+
+// ── HTTP clients (for provisioning verification) ──────────────────────────
+builder.Services.AddHttpClient("provisioning", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
+
+// ── Email service (MailKit) ────────────────────────────────────────────────
+builder.Services.AddSingleton<IEmailService, MailKitEmailService>();
 
 // ── SignalR ───────────────────────────────────────────────────────────────
 builder.Services.AddSignalR();

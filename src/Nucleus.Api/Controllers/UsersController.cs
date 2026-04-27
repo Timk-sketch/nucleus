@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Nucleus.Application.Common;
+using Nucleus.Application.Common.Interfaces;
 using Nucleus.Domain.Entities;
 using Nucleus.Infrastructure.Data;
 using System.Security.Claims;
@@ -15,7 +16,9 @@ namespace Nucleus.Api.Controllers;
 [Produces("application/json")]
 public class UsersController(
     UserManager<ApplicationUser> userManager,
-    NucleusDbContext db) : ControllerBase
+    NucleusDbContext db,
+    IEmailService emailService,
+    ILogger<UsersController> logger) : ControllerBase
 {
     private Guid CurrentTenantId =>
         Guid.Parse(User.FindFirstValue("tenant_id") ?? Guid.Empty.ToString());
@@ -74,7 +77,9 @@ public class UsersController(
 
         await userManager.AddToRoleAsync(user, role);
 
-        // TODO Sprint 7: send invite email via MailKit with tempPassword
+        // Send invite email (fire-and-forget — don't block invite if SMTP isn't configured)
+        _ = SendInviteEmailAsync(user, tempPassword);
+
         return Ok(ApiResponse.Ok(new
         {
             user.Id,
@@ -82,7 +87,7 @@ public class UsersController(
             user.FirstName,
             user.LastName,
             user.Role,
-            TempPassword = tempPassword, // returned once — will be emailed in Sprint 7
+            TempPassword = tempPassword, // also returned in response for admin to share manually
         }));
     }
 
@@ -140,6 +145,27 @@ public class UsersController(
         await userManager.DeleteAsync(user);
 
         return NoContent();
+    }
+
+    private async Task SendInviteEmailAsync(ApplicationUser user, string tempPassword)
+    {
+        try
+        {
+            var html = $"""
+                <h2>You've been invited to Nucleus</h2>
+                <p>Hi {user.FirstName},</p>
+                <p>An admin has added you to their Nucleus workspace. Use the credentials below to sign in.</p>
+                <p><strong>Email:</strong> {user.Email}<br/>
+                   <strong>Temporary password:</strong> <code>{tempPassword}</code></p>
+                <p>Please change your password after your first login via Settings → Change password.</p>
+                """;
+
+            await emailService.SendAsync(user.Email!, "You've been invited to Nucleus", html);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to send invite email to {Email}", user.Email);
+        }
     }
 
     private static string GenerateTempPassword()
