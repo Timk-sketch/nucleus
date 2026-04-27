@@ -140,7 +140,10 @@ builder.Services.AddAuthentication(opts =>
         }
     };
 });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(opts =>
+{
+    opts.AddPolicy("SuperAdmin", p => p.RequireRole("SuperAdmin"));
+});
 
 // ── Multi-tenancy ─────────────────────────────────────────────────────────
 builder.Services.AddHttpContextAccessor();
@@ -187,6 +190,9 @@ builder.Services.AddHttpClient("dataforseo", client =>
 
 // ── Email service (MailKit) ────────────────────────────────────────────────
 builder.Services.AddSingleton<IEmailService, MailKitEmailService>();
+
+// ── Audit service ─────────────────────────────────────────────────────────
+builder.Services.AddScoped<IAuditService, Nucleus.Infrastructure.Services.AuditService>();
 
 // ── SignalR ───────────────────────────────────────────────────────────────
 builder.Services.AddSignalR();

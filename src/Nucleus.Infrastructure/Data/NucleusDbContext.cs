@@ -12,6 +12,7 @@ public class NucleusDbContext(
     : IdentityDbContext<ApplicationUser, Microsoft.AspNetCore.Identity.IdentityRole<Guid>, Guid>(options), INucleusDbContext
 {
     public DbSet<Tenant> Tenants => Set<Tenant>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Brand> Brands => Set<Brand>();
     public DbSet<BrandProvisioningStep> BrandProvisioningSteps => Set<BrandProvisioningStep>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
@@ -129,6 +130,18 @@ public class NucleusDbContext(
             e.HasKey(r => r.Id);
             e.Property(r => r.Token).HasMaxLength(500).IsRequired();
             e.HasIndex(r => r.Token).IsUnique();
+        });
+
+        builder.Entity<AuditLog>(e =>
+        {
+            e.ToTable("audit_logs");
+            e.HasKey(a => a.Id);
+            e.HasIndex(a => a.TenantId);
+            e.HasIndex(a => a.CreatedAt);
+            e.Property(a => a.Action).HasMaxLength(50).IsRequired();
+            e.Property(a => a.EntityType).HasMaxLength(100).IsRequired();
+            e.Property(a => a.EntityId).HasMaxLength(100);
+            e.Property(a => a.Changes).HasColumnType("jsonb");
         });
 
         // Global tenant query filter on all TenantEntity subclasses

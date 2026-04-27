@@ -20,17 +20,20 @@ public class BrandsController : ControllerBase
     private readonly INucleusDbContext _db;
     private readonly ICurrentTenantService _tenantService;
     private readonly IMemoryCache _cache;
+    private readonly IAuditService _audit;
 
     public BrandsController(IMediator mediator, INucleusDbContext db,
-        ICurrentTenantService tenantService, IMemoryCache cache)
+        ICurrentTenantService tenantService, IMemoryCache cache, IAuditService audit)
     {
         _mediator = mediator;
         _db = db;
         _tenantService = tenantService;
         _cache = cache;
+        _audit = audit;
     }
 
     private string BrandListCacheKey() => $"brands:{_tenantService.TenantId}";
+    private Guid? CurrentUserId() => Guid.TryParse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var id) ? id : null;
 
     [HttpPost]
     [ProducesResponseType(typeof(CreateBrandResult), 201)]
@@ -44,6 +47,7 @@ public class BrandsController : ControllerBase
 
         BackgroundJob.Enqueue<BrandProvisioningJob>(job => job.RunAsync(result.BrandId));
         _cache.Remove(BrandListCacheKey());
+        await _audit.LogAsync(_tenantService.TenantId, CurrentUserId(), "created", "Brand", result.BrandId.ToString(), ct: ct);
 
         return CreatedAtAction(nameof(GetById), new { id = result.BrandId }, result);
     }
@@ -103,6 +107,7 @@ public class BrandsController : ControllerBase
 
         await _db.SaveChangesAsync(ct);
         _cache.Remove(BrandListCacheKey());
+        await _audit.LogAsync(_tenantService.TenantId, CurrentUserId(), "updated", "Brand", id.ToString(), ct: ct);
 
         return Ok(new { success = true, data = new { brand.Id, brand.Name, brand.Status } });
     }
@@ -118,6 +123,7 @@ public class BrandsController : ControllerBase
         _db.Brands.Remove(brand);
         await _db.SaveChangesAsync(ct);
         _cache.Remove(BrandListCacheKey());
+        await _audit.LogAsync(_tenantService.TenantId, CurrentUserId(), "deleted", "Brand", id.ToString(), ct: ct);
 
         return NoContent();
     }

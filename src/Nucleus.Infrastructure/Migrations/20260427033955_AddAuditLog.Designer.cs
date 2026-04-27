@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Nucleus.Infrastructure.Data;
@@ -11,9 +12,11 @@ using Nucleus.Infrastructure.Data;
 namespace Nucleus.Infrastructure.Migrations
 {
     [DbContext(typeof(NucleusDbContext))]
-    partial class NucleusDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260427033955_AddAuditLog")]
+    partial class AddAuditLog
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
