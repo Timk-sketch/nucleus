@@ -149,10 +149,15 @@ builder.Services.AddHangfireServer();
 builder.Services.AddScoped<IBackgroundJobService, HangfireBackgroundJobService>();
 builder.Services.AddScoped<BrandProvisioningJob>();
 
-// ── HTTP clients (for provisioning verification) ──────────────────────────
+// ── HTTP clients ──────────────────────────────────────────────────────────
 builder.Services.AddHttpClient("provisioning", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(15);
+});
+builder.Services.AddHttpClient("wordpress", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(20);
+    client.DefaultRequestHeaders.Add("User-Agent", "Nucleus/1.0");
 });
 
 // ── Email service (MailKit) ────────────────────────────────────────────────

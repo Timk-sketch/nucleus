@@ -8,6 +8,7 @@ public interface INucleusDbContext
     DbSet<Tenant> Tenants { get; }
     DbSet<Brand> Brands { get; }
     DbSet<BrandProvisioningStep> BrandProvisioningSteps { get; }
+    DbSet<BrandKeyword> BrandKeywords { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

@@ -15,6 +15,7 @@ public class NucleusDbContext(
     public DbSet<Brand> Brands => Set<Brand>();
     public DbSet<BrandProvisioningStep> BrandProvisioningSteps => Set<BrandProvisioningStep>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<BrandKeyword> BrandKeywords => Set<BrandKeyword>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -59,6 +60,16 @@ public class NucleusDbContext(
             e.HasMany(b => b.ProvisioningSteps)
                 .WithOne(s => s.Brand)
                 .HasForeignKey(s => s.BrandId);
+        });
+
+        builder.Entity<BrandKeyword>(e =>
+        {
+            e.ToTable("brand_keywords");
+            e.HasKey(k => k.Id);
+            e.Property(k => k.Keyword).HasMaxLength(300).IsRequired();
+            e.Property(k => k.TargetUrl).HasMaxLength(500);
+            e.Property(k => k.Notes).HasMaxLength(1000);
+            e.HasOne(k => k.Brand).WithMany(b => b.Keywords).HasForeignKey(k => k.BrandId);
         });
 
         builder.Entity<BrandProvisioningStep>(e =>

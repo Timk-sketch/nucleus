@@ -1,0 +1,395 @@
+@page "/content"
+@attribute [Authorize]
+@inject HttpClient Http
+
+<PageTitle>Content — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Content</h1>
+        <p class="page-subtitle">Manage blog posts and keyword targets across your brands</p>
+    </div>
+</div>
+
+<!-- Brand selector -->
+@if (_brands.Count == 0 && !_brandsLoading)
+{
+    <div style="padding:48px;text-align:center;color:var(--color-muted);">
+        No brands yet. <a href="/brands" style="color:#6366f1;">Add a brand</a> to get started.
+    </div>
+}
+else
+{
+    <div style="display:flex;gap:12px;margin-bottom:28px;flex-wrap:wrap;">
+        @foreach (var b in _brands)
+        {
+            <button @onclick="() => SelectBrand(b)"
+                    style="padding:8px 16px;border-radius:999px;border:2px solid @(_selectedBrand?.Id == b.Id ? "#6366f1" : "var(--color-border)");
+                           background:@(_selectedBrand?.Id == b.Id ? "rgba(99,102,241,0.1)" : "var(--color-surface)");
+                           color:@(_selectedBrand?.Id == b.Id ? "#6366f1" : "var(--color-text)");
+                           font-size:13px;font-weight:600;cursor:pointer;">
+                @b.Name
+            </button>
+        }
+    </div>
+}
+
+@if (_selectedBrand != null)
+{
+    <!-- Tabs -->
+    <div style="display:flex;gap:0;border-bottom:1px solid var(--color-border);margin-bottom:24px;">
+        <button @onclick='() => _tab = "posts"'
+                style="padding:10px 20px;font-size:14px;font-weight:600;border:none;background:none;cursor:pointer;
+                       border-bottom:2px solid @(_tab == "posts" ? "#6366f1" : "transparent");
+                       color:@(_tab == "posts" ? "#6366f1" : "var(--color-muted)");">
+            Blog posts
+        </button>
+        <button @onclick='() => _tab = "keywords"'
+                style="padding:10px 20px;font-size:14px;font-weight:600;border:none;background:none;cursor:pointer;
+                       border-bottom:2px solid @(_tab == "keywords" ? "#6366f1" : "transparent");
+                       color:@(_tab == "keywords" ? "#6366f1" : "var(--color-muted)");">
+            Keywords
+        </button>
+    </div>
+
+    @if (_tab == "posts")
+    {
+        <!-- Post composer -->
+        <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:24px;margin-bottom:24px;">
+            <h3 style="font-size:14px;font-weight:700;margin:0 0 16px;">New post</h3>
+
+            @if (_postError != null)   { <div class="auth-error" style="margin-bottom:12px;">@_postError</div> }
+            @if (_postSuccess != null) { <div style="margin-bottom:12px;padding:10px 14px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius);color:#10b981;font-weight:600;">@_postSuccess</div> }
+
+            <div class="form-group">
+                <label>TITLE</label>
+                <input class="form-input" @bind="_postTitle" placeholder="Post title" />
+            </div>
+            <div class="form-group">
+                <label>CONTENT <span class="label-hint">(HTML supported)</span></label>
+                <textarea class="form-input" @bind="_postContent" rows="6"
+                          style="resize:vertical;font-family:monospace;font-size:13px;"
+                          placeholder="<p>Write your post here…</p>"></textarea>
+            </div>
+            <div class="form-group">
+                <label>EXCERPT <span class="label-hint">(optional)</span></label>
+                <input class="form-input" @bind="_postExcerpt" placeholder="Short summary for previews" />
+            </div>
+            <div style="display:flex;gap:12px;align-items:center;margin-top:8px;">
+                <button class="btn-primary" @onclick="() => PublishPost(false)" disabled="@_postSaving">
+                    @(_postSaving ? "Saving…" : "Save as draft")
+                </button>
+                <button class="btn-secondary" @onclick="() => PublishPost(true)" disabled="@_postSaving">
+                    Publish now
+                </button>
+            </div>
+        </div>
+
+        <!-- Posts list -->
+        @if (_postsLoading)
+        {
+            <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+        }
+        else if (!_wpConfigured)
+        {
+            <div style="padding:32px;text-align:center;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);color:var(--color-muted);">
+                WordPress is not configured for this brand.
+                <a href="/brands/@_selectedBrand.Id/edit" style="color:#6366f1;margin-left:6px;">Configure →</a>
+            </div>
+        }
+        else if (_posts.Count == 0)
+        {
+            <div style="padding:32px;text-align:center;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);color:var(--color-muted);">
+                No posts yet. Create your first post above.
+            </div>
+        }
+        else
+        {
+            <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;">
+                @foreach (var (post, idx) in _posts.Select((p, i) => (p, i)))
+                {
+                    <div style="padding:16px 20px;@(idx < _posts.Count - 1 ? "border-bottom:1px solid var(--color-border);" : "")display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
+                        <div>
+                            <div style="font-weight:600;font-size:15px;">@post.Title</div>
+                            <div style="font-size:13px;color:var(--color-muted);margin-top:3px;">
+                                @post.Date.ToString("MMM d, yyyy") ·
+                                <span style="padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;
+                                             background:@(post.Status == "publish" ? "rgba(16,185,129,0.1)" : "rgba(0,0,0,0.06)");
+                                             color:@(post.Status == "publish" ? "#10b981" : "var(--color-muted)")">
+                                    @(post.Status == "publish" ? "Published" : "Draft")
+                                </span>
+                            </div>
+                        </div>
+                        @if (!string.IsNullOrEmpty(post.Link))
+                        {
+                            <a href="@post.Link" target="_blank" rel="noopener"
+                               style="font-size:13px;color:#6366f1;white-space:nowrap;flex-shrink:0;">View →</a>
+                        }
+                    </div>
+                }
+            </div>
+
+            @if (_totalPages > _currentPage)
+            {
+                <div style="margin-top:16px;text-align:center;">
+                    <button class="btn-secondary" @onclick="LoadMorePosts" disabled="@_postsLoading">Load more</button>
+                </div>
+            }
+        }
+    }
+
+    @if (_tab == "keywords")
+    {
+        <!-- Add keyword -->
+        <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:24px;margin-bottom:24px;max-width:640px;">
+            <h3 style="font-size:14px;font-weight:700;margin:0 0 16px;">Track a keyword</h3>
+
+            @if (_kwError != null)   { <div class="auth-error" style="margin-bottom:12px;">@_kwError</div> }
+            @if (_kwSuccess != null) { <div style="margin-bottom:12px;padding:10px 14px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius);color:#10b981;font-weight:600;">@_kwSuccess</div> }
+
+            <div class="form-row">
+                <div class="form-group" style="flex:2;">
+                    <label>KEYWORD</label>
+                    <input class="form-input" @bind="_kwKeyword" placeholder="montana llc registration" />
+                </div>
+                <div class="form-group" style="flex:3;">
+                    <label>TARGET URL <span class="label-hint">(optional)</span></label>
+                    <input class="form-input" @bind="_kwUrl" placeholder="https://yourbrand.com/service" />
+                </div>
+            </div>
+            <button class="btn-primary" @onclick="AddKeyword" disabled="@_kwSaving" style="margin-top:4px;">
+                @(_kwSaving ? "Adding…" : "Add keyword")
+            </button>
+        </div>
+
+        <!-- Keywords list -->
+        @if (_kwLoading)
+        {
+            <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+        }
+        else if (_keywords.Count == 0)
+        {
+            <div style="padding:32px;text-align:center;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);color:var(--color-muted);">
+                No keywords tracked yet. Add one above.
+            </div>
+        }
+        else
+        {
+            <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;">
+                <table style="width:100%;border-collapse:collapse;">
+                    <thead>
+                        <tr style="border-bottom:1px solid var(--color-border);background:rgba(0,0,0,0.02);">
+                            <th style="padding:10px 20px;text-align:left;font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--color-muted);text-transform:uppercase;">Keyword</th>
+                            <th style="padding:10px 20px;text-align:left;font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--color-muted);text-transform:uppercase;">Target URL</th>
+                            <th style="padding:10px 20px;text-align:left;font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--color-muted);text-transform:uppercase;">Added</th>
+                            <th style="padding:10px 20px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var kw in _keywords)
+                        {
+                            <tr style="border-bottom:1px solid var(--color-border);">
+                                <td style="padding:14px 20px;font-weight:600;">@kw.Keyword</td>
+                                <td style="padding:14px 20px;font-size:13px;color:var(--color-muted);">
+                                    @if (!string.IsNullOrEmpty(kw.TargetUrl))
+                                    {
+                                        <a href="@kw.TargetUrl" target="_blank" rel="noopener" style="color:#6366f1;">@kw.TargetUrl</a>
+                                    }
+                                    else { <span>—</span> }
+                                </td>
+                                <td style="padding:14px 20px;font-size:13px;color:var(--color-muted);">@kw.CreatedAt.ToString("MMM d, yyyy")</td>
+                                <td style="padding:14px 20px;text-align:right;">
+                                    <button @onclick="() => RemoveKeyword(kw)"
+                                            style="font-size:13px;color:#ef4444;background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:4px;">
+                                        Remove
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private bool _brandsLoading = true;
+    private string _tab = "posts";
+
+    // Posts
+    private List<WpPost> _posts = [];
+    private bool _postsLoading, _wpConfigured = true, _postSaving;
+    private string _postTitle = "", _postContent = "", _postExcerpt = "";
+    private string? _postError, _postSuccess;
+    private int _currentPage = 1, _totalPages = 1;
+
+    // Keywords
+    private List<KwItem> _keywords = [];
+    private bool _kwLoading, _kwSaving;
+    private string _kwKeyword = "", _kwUrl = "";
+    private string? _kwError, _kwSuccess;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        _brandsLoading = false;
+
+        if (_brands.Count > 0)
+            await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _posts = [];
+        _keywords = [];
+        _currentPage = 1;
+        _postError = _postSuccess = _kwError = _kwSuccess = null;
+        await Task.WhenAll(LoadPosts(), LoadKeywords());
+    }
+
+    private async Task LoadPosts()
+    {
+        if (_selectedBrand is null) return;
+        _postsLoading = true;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<PostsData>>(
+                $"api/v1/brands/{_selectedBrand.Id}/posts?page={_currentPage}");
+            _wpConfigured = resp?.Data?.WpConfigured ?? true;
+            if (resp?.Data?.Posts != null)
+            {
+                var parsed = ParsePosts(resp.Data.Posts);
+                if (_currentPage == 1) _posts = parsed;
+                else _posts.AddRange(parsed);
+                _totalPages = resp.Data.TotalPages ?? 1;
+            }
+        }
+        catch { }
+        finally { _postsLoading = false; }
+    }
+
+    private async Task LoadMorePosts()
+    {
+        _currentPage++;
+        await LoadPosts();
+    }
+
+    private async Task PublishPost(bool publish)
+    {
+        if (string.IsNullOrWhiteSpace(_postTitle)) { _postError = "Title is required."; return; }
+        if (string.IsNullOrWhiteSpace(_postContent)) { _postError = "Content is required."; return; }
+        _postError = null; _postSuccess = null; _postSaving = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"api/v1/brands/{_selectedBrand!.Id}/posts", new
+            {
+                Title = _postTitle,
+                Content = _postContent,
+                Excerpt = _postExcerpt,
+                Publish = publish,
+            });
+            if (resp.IsSuccessStatusCode)
+            {
+                _postSuccess = publish ? "Post published." : "Draft saved.";
+                _postTitle = _postContent = _postExcerpt = "";
+                _currentPage = 1;
+                await LoadPosts();
+            }
+            else
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                _postError = ExtractError(body);
+            }
+        }
+        catch (Exception ex) { _postError = ex.Message; }
+        finally { _postSaving = false; }
+    }
+
+    private async Task LoadKeywords()
+    {
+        if (_selectedBrand is null) return;
+        _kwLoading = true;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<List<KwItem>>>(
+                $"api/v1/brands/{_selectedBrand.Id}/keywords");
+            _keywords = resp?.Data ?? [];
+        }
+        catch { }
+        finally { _kwLoading = false; }
+    }
+
+    private async Task AddKeyword()
+    {
+        if (string.IsNullOrWhiteSpace(_kwKeyword)) { _kwError = "Keyword is required."; return; }
+        _kwError = null; _kwSuccess = null; _kwSaving = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"api/v1/brands/{_selectedBrand!.Id}/keywords", new
+            {
+                Keyword = _kwKeyword,
+                TargetUrl = _kwUrl,
+                Notes = (string?)null,
+            });
+            if (resp.IsSuccessStatusCode)
+            {
+                _kwSuccess = $"\"{_kwKeyword}\" added.";
+                _kwKeyword = _kwUrl = "";
+                await LoadKeywords();
+            }
+            else
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                _kwError = ExtractError(body);
+            }
+        }
+        catch (Exception ex) { _kwError = ex.Message; }
+        finally { _kwSaving = false; }
+    }
+
+    private async Task RemoveKeyword(KwItem kw)
+    {
+        var resp = await Http.DeleteAsync($"api/v1/brands/{_selectedBrand!.Id}/keywords/{kw.Id}");
+        if (resp.IsSuccessStatusCode) _keywords.Remove(kw);
+    }
+
+    private static List<WpPost> ParsePosts(System.Text.Json.JsonElement el)
+    {
+        var list = new List<WpPost>();
+        if (el.ValueKind != System.Text.Json.JsonValueKind.Array) return list;
+        foreach (var item in el.EnumerateArray())
+        {
+            list.Add(new WpPost
+            {
+                Id = item.TryGetProperty("id", out var id) ? id.GetInt32() : 0,
+                Title = item.TryGetProperty("title", out var t) && t.TryGetProperty("rendered", out var tr) ? tr.GetString() ?? "" : "",
+                Status = item.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "",
+                Date = item.TryGetProperty("date", out var d) && DateTimeOffset.TryParse(d.GetString(), out var dt) ? dt : DateTimeOffset.MinValue,
+                Link = item.TryGetProperty("link", out var l) ? l.GetString() ?? "" : "",
+            });
+        }
+        return list;
+    }
+
+    private static string ExtractError(string json)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("error", out var e)) return e.GetString() ?? "Error";
+        }
+        catch { }
+        return "Request failed";
+    }
+
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; }
+    private class WpPost { public int Id { get; set; } public string Title { get; set; } = ""; public string Status { get; set; } = ""; public DateTimeOffset Date { get; set; } public string Link { get; set; } = ""; }
+    private class KwItem { public Guid Id { get; set; } public string Keyword { get; set; } = ""; public string? TargetUrl { get; set; } public DateTimeOffset CreatedAt { get; set; } }
+    private class PostsData { public bool WpConfigured { get; set; } public System.Text.Json.JsonElement Posts { get; set; } public int? Total { get; set; } public int? TotalPages { get; set; } }
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

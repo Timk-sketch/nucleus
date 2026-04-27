@@ -34,4 +34,5 @@ public class Brand : TenantEntity
     public string? CompetitorDomainsJson { get; set; }
 
     public ICollection<BrandProvisioningStep> ProvisioningSteps { get; set; } = [];
+    public ICollection<BrandKeyword> Keywords { get; set; } = [];
 }
