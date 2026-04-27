@@ -135,6 +135,17 @@ public class ContentController(
         if (string.IsNullOrWhiteSpace(req.Keyword))
             return BadRequest(ApiResponse.Fail("Keyword is required."));
 
+        // Plan gate: starter tenants are limited to 50 keywords per brand
+        var tenant = await db.Tenants.AsNoTracking()
+            .FirstOrDefaultAsync(t => t.Id == CurrentTenantId, ct);
+        if (tenant?.Plan == "starter")
+        {
+            var kwCount = await db.BrandKeywords.CountAsync(k => k.BrandId == brandId, ct);
+            if (kwCount >= 50)
+                return StatusCode(403, ApiResponse.Fail(
+                    "Starter plan is limited to 50 keywords per brand. Upgrade to Pro for unlimited keywords."));
+        }
+
         var keyword = new BrandKeyword
         {
             TenantId = CurrentTenantId,

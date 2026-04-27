@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Nucleus.Application.Brands.Commands;
+using Nucleus.Application.Common;
 using Nucleus.Application.Common.Interfaces;
 using Nucleus.Api.Jobs;
 
@@ -40,6 +41,17 @@ public class BrandsController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), 400)]
     public async Task<IActionResult> Create([FromBody] CreateBrandRequest req, CancellationToken ct)
     {
+        // Plan gate: starter tenants are limited to 1 brand
+        var tenant = await _db.Tenants.AsNoTracking()
+            .FirstOrDefaultAsync(t => t.Id == _tenantService.TenantId, ct);
+        if (tenant?.Plan == "starter")
+        {
+            var brandCount = await _db.Brands.CountAsync(ct);
+            if (brandCount >= 1)
+                return StatusCode(403, ApiResponse.Fail(
+                    "Starter plan is limited to 1 brand. Upgrade to Pro for unlimited brands."));
+        }
+
         var result = await _mediator.Send(new CreateBrandCommand(
             req.Code, req.Name, req.Domain, req.PrimaryColor,
             req.WpSiteUrl, req.WpUsername, req.WpAppPassword,

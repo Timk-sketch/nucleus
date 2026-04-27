@@ -16,6 +16,20 @@ public class KeywordRankJob(
 {
     private const string DataForSeoUrl = "https://api.dataforseo.com/v3/serp/google/organic/live/regular";
 
+    // Entry point for the nightly recurring job — enqueues per-brand checks for all tenants
+    [DisableConcurrentExecution(timeoutInSeconds: 60)]
+    public async Task CheckAllBrandsAsync(CancellationToken ct = default)
+    {
+        var brands = await db.Brands
+            .Select(b => new { b.TenantId, b.Id })
+            .ToListAsync(ct);
+
+        foreach (var b in brands)
+            BackgroundJob.Enqueue<KeywordRankJob>(j => j.CheckRanksAsync(b.TenantId, b.Id, CancellationToken.None));
+
+        logger.LogInformation("Nightly rank check queued {Count} brand jobs", brands.Count);
+    }
+
     [DisableConcurrentExecution(timeoutInSeconds: 300)]
     public async Task CheckRanksAsync(Guid tenantId, Guid brandId, CancellationToken ct = default)
     {

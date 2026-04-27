@@ -308,7 +308,7 @@ app.MapHangfireDashboard("/hangfire", new DashboardOptions
 app.MapHealthChecks("/health");
 app.MapFallbackToFile("index.html"); // SPA client-side routing fallback
 
-// Run pending EF migrations in background so Railway healthcheck gets a fast first response.
+// Run pending EF migrations + seed roles/super-admin in background so Railway healthcheck gets a fast first response.
 _ = Task.Run(async () =>
 {
     await Task.Delay(1000); // brief pause so DI is fully warm
@@ -317,7 +317,51 @@ _ = Task.Run(async () =>
     var pending = await dbCtx.Database.GetPendingMigrationsAsync();
     if (pending.Any())
         await dbCtx.Database.MigrateAsync();
+
+    // Seed Identity roles
+    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
+    foreach (var role in new[] { "TenantAdmin", "TenantMember", "SuperAdmin" })
+    {
+        if (!await roleManager.RoleExistsAsync(role))
+            await roleManager.CreateAsync(new IdentityRole<Guid>(role));
+    }
+
+    // Seed SuperAdmin user from env var
+    var superAdminEmail = app.Configuration["SUPER_ADMIN_EMAIL"];
+    if (!string.IsNullOrEmpty(superAdminEmail))
+    {
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var existing = await userManager.FindByEmailAsync(superAdminEmail);
+        if (existing == null)
+        {
+            var superAdmin = new ApplicationUser
+            {
+                UserName = superAdminEmail,
+                Email = superAdminEmail,
+                EmailConfirmed = true,
+                FirstName = "Super",
+                LastName = "Admin",
+                TenantId = Guid.Empty,
+                Role = "SuperAdmin",
+            };
+            var tempPw = app.Configuration["SUPER_ADMIN_PASSWORD"]
+                ?? throw new InvalidOperationException("SUPER_ADMIN_PASSWORD required when SUPER_ADMIN_EMAIL is set.");
+            await userManager.CreateAsync(superAdmin, tempPw);
+            await userManager.AddToRoleAsync(superAdmin, "SuperAdmin");
+        }
+        else if (!await userManager.IsInRoleAsync(existing, "SuperAdmin"))
+        {
+            await userManager.AddToRoleAsync(existing, "SuperAdmin");
+        }
+    }
 });
+
+// Register nightly Hangfire recurring jobs
+RecurringJob.AddOrUpdate<KeywordRankJob>(
+    "keyword-ranks-nightly",
+    job => job.CheckAllBrandsAsync(CancellationToken.None),
+    Cron.Daily(3), // 3 AM UTC
+    new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
 app.Run();
 
