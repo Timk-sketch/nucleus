@@ -221,7 +221,7 @@ builder.Services.AddControllers();
 
 // ── Health checks ─────────────────────────────────────────────────────────
 builder.Services.AddHealthChecks()
-    .AddNpgsql(connectionString);
+    .AddDbContextCheck<NucleusDbContext>("db");
 
 // ── Rate limiting ─────────────────────────────────────────────────────────
 // "auth" policy: 10 requests/minute per IP on login/register/refresh endpoints
@@ -286,27 +286,15 @@ app.MapHangfireDashboard("/hangfire", new DashboardOptions
 app.MapHealthChecks("/health");
 app.MapFallbackToFile("index.html"); // SPA client-side routing fallback
 
-// DB init runs in background so Railway healthcheck gets a fast first response.
-// MigrateAsync applies pending EF migrations when they exist.
-// Falls back to EnsureCreated when no migrations have been added yet (dev / first deploy).
+// Run pending EF migrations in background so Railway healthcheck gets a fast first response.
 _ = Task.Run(async () =>
 {
     await Task.Delay(1000); // brief pause so DI is fully warm
     using var scope = app.Services.CreateScope();
     var dbCtx = scope.ServiceProvider.GetRequiredService<NucleusDbContext>();
-    try
-    {
-        var pending = await dbCtx.Database.GetPendingMigrationsAsync();
-        if (pending.Any())
-            await dbCtx.Database.MigrateAsync();
-        else
-            await dbCtx.Database.EnsureCreatedAsync();
-    }
-    catch
-    {
-        // No migrations registered — fall back to EnsureCreated
-        await dbCtx.Database.EnsureCreatedAsync();
-    }
+    var pending = await dbCtx.Database.GetPendingMigrationsAsync();
+    if (pending.Any())
+        await dbCtx.Database.MigrateAsync();
 });
 
 app.Run();
