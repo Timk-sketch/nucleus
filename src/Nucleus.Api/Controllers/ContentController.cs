@@ -1,10 +1,12 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Nucleus.Application.Common;
+using Nucleus.Api.Jobs;
 using Nucleus.Domain.Entities;
 using Nucleus.Infrastructure.Data;
 using System.Security.Claims;
@@ -174,6 +176,20 @@ public class ContentController(
             .ToListAsync(ct);
 
         return Ok(ApiResponse.Ok(ranks));
+    }
+
+    // POST /api/v1/brands/{brandId}/keywords/ranks/check
+    // Enqueues a DataForSEO rank check for all keywords in the brand
+    [HttpPost("keywords/ranks/check")]
+    public async Task<IActionResult> CheckRanks(Guid brandId, CancellationToken ct)
+    {
+        var brand = await GetBrand(brandId, ct);
+        if (brand is null) return NotFound(ApiResponse.Fail("Brand not found."));
+
+        BackgroundJob.Enqueue<KeywordRankJob>(j =>
+            j.CheckRanksAsync(CurrentTenantId, brandId, CancellationToken.None));
+
+        return Ok(ApiResponse.Ok(new { queued = true }));
     }
 
     // DELETE /api/v1/brands/{brandId}/keywords/{keywordId}

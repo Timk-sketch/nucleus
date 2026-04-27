@@ -49,6 +49,7 @@ public class NucleusDbContext(
         {
             e.ToTable("brands");
             e.HasKey(b => b.Id);
+            e.HasIndex(b => b.TenantId);
             e.Property(b => b.Code).HasMaxLength(20).IsRequired();
             e.Property(b => b.Name).HasMaxLength(200).IsRequired();
             e.Property(b => b.Domain).HasMaxLength(300);
@@ -69,6 +70,7 @@ public class NucleusDbContext(
         {
             e.ToTable("brand_keywords");
             e.HasKey(k => k.Id);
+            e.HasIndex(k => k.TenantId);
             e.Property(k => k.Keyword).HasMaxLength(300).IsRequired();
             e.Property(k => k.TargetUrl).HasMaxLength(500);
             e.Property(k => k.Notes).HasMaxLength(1000);
@@ -80,6 +82,7 @@ public class NucleusDbContext(
         {
             e.ToTable("ghl_contacts");
             e.HasKey(c => c.Id);
+            e.HasIndex(c => c.TenantId);
             e.Property(c => c.GhlContactId).HasMaxLength(100).IsRequired();
             e.Property(c => c.FirstName).HasMaxLength(200);
             e.Property(c => c.LastName).HasMaxLength(200);
@@ -93,6 +96,8 @@ public class NucleusDbContext(
         {
             e.ToTable("keyword_ranks");
             e.HasKey(r => r.Id);
+            e.HasIndex(r => r.TenantId);
+            e.HasIndex(r => new { r.KeywordId, r.CheckedAt });
             e.Property(r => r.RankedUrl).HasMaxLength(500);
         });
 
@@ -100,6 +105,7 @@ public class NucleusDbContext(
         {
             e.ToTable("email_campaigns");
             e.HasKey(c => c.Id);
+            e.HasIndex(c => c.TenantId);
             e.Property(c => c.Subject).HasMaxLength(500).IsRequired();
             e.Property(c => c.Status).HasMaxLength(50).HasDefaultValue("draft");
             e.HasOne(c => c.Brand).WithMany().HasForeignKey(c => c.BrandId);
@@ -109,6 +115,7 @@ public class NucleusDbContext(
         {
             e.ToTable("brand_provisioning_steps");
             e.HasKey(s => s.Id);
+            e.HasIndex(s => s.TenantId);
             e.Property(s => s.StepName).HasMaxLength(100).IsRequired();
             e.Property(s => s.Status).HasMaxLength(50).HasDefaultValue("pending");
         });

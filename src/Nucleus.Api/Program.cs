@@ -2,6 +2,7 @@ using System.Text;
 using System.Threading.RateLimiting;
 using FluentValidation;
 using Hangfire;
+using Hangfire.Dashboard;
 using Hangfire.PostgreSql;
 using MediatR;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -34,6 +35,18 @@ Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
     .CreateLogger();
 builder.Host.UseSerilog();
+
+// ── Sentry ────────────────────────────────────────────────────────────────
+var sentryDsn = builder.Configuration["SENTRY_DSN"];
+if (!string.IsNullOrEmpty(sentryDsn))
+{
+    builder.WebHost.UseSentry(o =>
+    {
+        o.Dsn = sentryDsn;
+        o.TracesSampleRate = 0.1;
+        o.SendDefaultPii = false;
+    });
+}
 
 // ── Database ──────────────────────────────────────────────────────────────
 // Priority: appsettings → NUCLEUS_DB_CONNECTION (Supabase) → DATABASE_URL (Railway Postgres plugin)
@@ -206,6 +219,10 @@ builder.Services.AddSwaggerGen(c =>
 
 builder.Services.AddControllers();
 
+// ── Health checks ─────────────────────────────────────────────────────────
+builder.Services.AddHealthChecks()
+    .AddNpgsql(connectionString);
+
 // ── Rate limiting ─────────────────────────────────────────────────────────
 // "auth" policy: 10 requests/minute per IP on login/register/refresh endpoints
 builder.Services.AddRateLimiter(opts =>
@@ -262,7 +279,11 @@ app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Nucleus v1"
 
 app.MapControllers();
 app.MapHub<ProvisioningHub>("/hubs/provisioning");
-app.MapHangfireDashboard("/hangfire");
+app.MapHangfireDashboard("/hangfire", new DashboardOptions
+{
+    Authorization = [new HangfireAuthFilter(app.Configuration)],
+});
+app.MapHealthChecks("/health");
 app.MapFallbackToFile("index.html"); // SPA client-side routing fallback
 
 // DB init runs in background so Railway healthcheck gets a fast first response.
@@ -289,3 +310,37 @@ _ = Task.Run(async () =>
 });
 
 app.Run();
+
+// ── Hangfire dashboard auth (HTTP Basic in production, open on localhost) ──
+public class HangfireAuthFilter(IConfiguration config) : IDashboardAuthorizationFilter
+{
+    public bool Authorize(DashboardContext context)
+    {
+        var http = context.GetHttpContext();
+
+        var remote = http.Connection.RemoteIpAddress;
+        if (remote != null && System.Net.IPAddress.IsLoopback(remote))
+            return true;
+
+        var authHeader = http.Request.Headers["Authorization"].FirstOrDefault();
+        if (authHeader?.StartsWith("Basic ") != true)
+        {
+            http.Response.StatusCode = 401;
+            http.Response.Headers["WWW-Authenticate"] = "Basic realm=\"Nucleus\"";
+            return false;
+        }
+
+        try
+        {
+            var decoded = System.Text.Encoding.UTF8.GetString(
+                Convert.FromBase64String(authHeader["Basic ".Length..].Trim()));
+            var sep = decoded.IndexOf(':');
+            if (sep < 0) return false;
+            var user = decoded[..sep];
+            var pass = decoded[(sep + 1)..];
+            var expected = config["HANGFIRE_ADMIN_PASSWORD"];
+            return !string.IsNullOrEmpty(expected) && user == "admin" && pass == expected;
+        }
+        catch { return false; }
+    }
+}
