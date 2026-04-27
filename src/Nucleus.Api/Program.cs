@@ -219,6 +219,21 @@ builder.Services.AddSwaggerGen(c =>
 
 builder.Services.AddControllers();
 
+// ── Memory cache ──────────────────────────────────────────────────────────
+builder.Services.AddMemoryCache();
+
+// ── Response compression (Brotli + Gzip) ─────────────────────────────────
+builder.Services.AddResponseCompression(opts =>
+{
+    opts.EnableForHttps = true;
+    opts.Providers.Add<Microsoft.AspNetCore.ResponseCompression.BrotliCompressionProvider>();
+    opts.Providers.Add<Microsoft.AspNetCore.ResponseCompression.GzipCompressionProvider>();
+    opts.MimeTypes = Microsoft.AspNetCore.ResponseCompression.ResponseCompressionDefaults.MimeTypes.Concat(
+        ["application/json", "application/wasm", "image/svg+xml"]);
+});
+builder.Services.Configure<Microsoft.AspNetCore.ResponseCompression.BrotliCompressionProviderOptions>(opts =>
+    opts.Level = System.IO.Compression.CompressionLevel.Fastest);
+
 // ── Health checks ─────────────────────────────────────────────────────────
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<NucleusDbContext>("db");
@@ -267,6 +282,7 @@ var app = builder.Build();
 app.UseBlazorFrameworkFiles();    // serve Blazor WASM _framework/ files
 app.UseStaticFiles();              // serve wwwroot static assets
 
+app.UseResponseCompression();
 app.UseRateLimiter();
 app.UseMiddleware<TenantMiddleware>();
 app.UseSerilogRequestLogging();

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Nucleus.Application.Common;
 using Nucleus.Application.Common.Interfaces;
 using Nucleus.Infrastructure.Data;
@@ -18,22 +19,34 @@ public class BillingController(
     NucleusDbContext db,
     ICurrentTenantService tenantService,
     IConfiguration config,
+    IMemoryCache cache,
     ILogger<BillingController> logger) : ControllerBase
 {
+    private static string SubCacheKey(Guid tenantId) => $"subscription:{tenantId}";
+
     // GET /api/v1/billing/subscription
     [HttpGet("subscription")]
     public async Task<IActionResult> GetSubscription(CancellationToken ct)
     {
-        var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == tenantService.TenantId, ct);
-        if (tenant is null) return NotFound(ApiResponse.Fail("Tenant not found."));
+        var tenantId = tenantService.TenantId;
+        var cacheKey = SubCacheKey(tenantId);
 
-        return Ok(ApiResponse.Ok(new
+        if (!cache.TryGetValue(cacheKey, out object? cached))
         {
-            tenant.Plan,
-            tenant.SubscriptionStatus,
-            tenant.StripeSubscriptionId,
-            StripeConfigured = !string.IsNullOrEmpty(config["STRIPE_SECRET_KEY"]),
-        }));
+            var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == tenantId, ct);
+            if (tenant is null) return NotFound(ApiResponse.Fail("Tenant not found."));
+
+            cached = new
+            {
+                tenant.Plan,
+                tenant.SubscriptionStatus,
+                tenant.StripeSubscriptionId,
+                StripeConfigured = !string.IsNullOrEmpty(config["STRIPE_SECRET_KEY"]),
+            };
+            cache.Set(cacheKey, cached, TimeSpan.FromSeconds(30));
+        }
+
+        return Ok(ApiResponse.Ok(cached));
     }
 
     // POST /api/v1/billing/checkout
@@ -162,6 +175,7 @@ public class BillingController(
                 tenant.StripeSubscriptionId = session.SubscriptionId;
                 tenant.SubscriptionStatus = "active";
                 await db.SaveChangesAsync();
+                cache.Remove(SubCacheKey(tenantId));
                 logger.LogInformation("Tenant {TenantId} upgraded to pro via Stripe checkout", tenantId);
                 break;
             }
@@ -176,6 +190,7 @@ public class BillingController(
                 tenant.SubscriptionStatus = sub.Status;
                 if (sub.Status == "canceled") tenant.Plan = "starter";
                 await db.SaveChangesAsync();
+                cache.Remove(SubCacheKey(tenant.Id));
                 logger.LogInformation("Tenant {TenantId} subscription status → {Status}", tenant.Id, sub.Status);
                 break;
             }
@@ -191,6 +206,7 @@ public class BillingController(
                 tenant.SubscriptionStatus = "canceled";
                 tenant.StripeSubscriptionId = null;
                 await db.SaveChangesAsync();
+                cache.Remove(SubCacheKey(tenant.Id));
                 logger.LogInformation("Tenant {TenantId} subscription canceled", tenant.Id);
                 break;
             }

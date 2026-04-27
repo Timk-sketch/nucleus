@@ -1,3 +1,4 @@
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Nucleus.Domain.Entities;
 using Nucleus.Infrastructure.Data;
@@ -15,6 +16,7 @@ public class KeywordRankJob(
 {
     private const string DataForSeoUrl = "https://api.dataforseo.com/v3/serp/google/organic/live/regular";
 
+    [DisableConcurrentExecution(timeoutInSeconds: 300)]
     public async Task CheckRanksAsync(Guid tenantId, Guid brandId, CancellationToken ct = default)
     {
         var login    = config["DATAFORSEO_LOGIN"];

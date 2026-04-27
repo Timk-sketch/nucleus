@@ -3,6 +3,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Nucleus.Application.Brands.Commands;
 using Nucleus.Application.Common.Interfaces;
 using Nucleus.Api.Jobs;
@@ -17,12 +18,19 @@ public class BrandsController : ControllerBase
 {
     private readonly IMediator _mediator;
     private readonly INucleusDbContext _db;
+    private readonly ICurrentTenantService _tenantService;
+    private readonly IMemoryCache _cache;
 
-    public BrandsController(IMediator mediator, INucleusDbContext db)
+    public BrandsController(IMediator mediator, INucleusDbContext db,
+        ICurrentTenantService tenantService, IMemoryCache cache)
     {
         _mediator = mediator;
         _db = db;
+        _tenantService = tenantService;
+        _cache = cache;
     }
+
+    private string BrandListCacheKey() => $"brands:{_tenantService.TenantId}";
 
     [HttpPost]
     [ProducesResponseType(typeof(CreateBrandResult), 201)]
@@ -35,6 +43,7 @@ public class BrandsController : ControllerBase
             req.GhlLocationId, req.GhlApiKey, req.BrandVoice), ct);
 
         BackgroundJob.Enqueue<BrandProvisioningJob>(job => job.RunAsync(result.BrandId));
+        _cache.Remove(BrandListCacheKey());
 
         return CreatedAtAction(nameof(GetById), new { id = result.BrandId }, result);
     }
@@ -43,16 +52,21 @@ public class BrandsController : ControllerBase
     [ProducesResponseType(200)]
     public async Task<IActionResult> List(CancellationToken ct)
     {
-        var brands = await _db.Brands
-            .Select(b => new
-            {
-                b.Id, b.Code, b.Name, b.Domain, b.Slug,
-                b.PrimaryColor, b.Status, b.OnboardingStep,
-                b.OnboardingCompletedAt, b.ServicesProvisioned
-            })
-            .ToListAsync(ct);
+        var cacheKey = BrandListCacheKey();
+        if (!_cache.TryGetValue(cacheKey, out object? cached))
+        {
+            cached = await _db.Brands
+                .Select(b => new
+                {
+                    b.Id, b.Code, b.Name, b.Domain, b.Slug,
+                    b.PrimaryColor, b.Status, b.OnboardingStep,
+                    b.OnboardingCompletedAt, b.ServicesProvisioned
+                })
+                .ToListAsync(ct);
+            _cache.Set(cacheKey, cached, TimeSpan.FromSeconds(60));
+        }
 
-        return Ok(new { success = true, data = brands });
+        return Ok(new { success = true, data = cached });
     }
 
     [HttpGet("{id:guid}")]
@@ -88,6 +102,7 @@ public class BrandsController : ControllerBase
         brand.BrandVoice = req.BrandVoice ?? brand.BrandVoice;
 
         await _db.SaveChangesAsync(ct);
+        _cache.Remove(BrandListCacheKey());
 
         return Ok(new { success = true, data = new { brand.Id, brand.Name, brand.Status } });
     }
@@ -102,6 +117,7 @@ public class BrandsController : ControllerBase
 
         _db.Brands.Remove(brand);
         await _db.SaveChangesAsync(ct);
+        _cache.Remove(BrandListCacheKey());
 
         return NoContent();
     }

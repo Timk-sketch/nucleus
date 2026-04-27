@@ -1,3 +1,4 @@
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Nucleus.Domain.Entities;
 using Nucleus.Infrastructure.Data;
@@ -14,6 +15,7 @@ public class GhlContactSyncJob(
     private const int PageSize = 100;
     private const string GhlBaseUrl = "https://rest.gohighlevel.com/v1";
 
+    [DisableConcurrentExecution(timeoutInSeconds: 300)]
     public async Task SyncAsync(Guid tenantId, Guid brandId, CancellationToken ct = default)
     {
         var brand = await db.Brands
