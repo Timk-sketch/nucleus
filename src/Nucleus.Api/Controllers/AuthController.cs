@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Nucleus.Application.Common;
+using Nucleus.Application.Common.Interfaces;
 using Nucleus.Domain.Entities;
 using Nucleus.Infrastructure.Auth;
 using Nucleus.Infrastructure.Data;
@@ -17,7 +18,9 @@ public class AuthController(
     UserManager<ApplicationUser> userManager,
     SignInManager<ApplicationUser> signInManager,
     JwtTokenService jwtService,
-    NucleusDbContext db) : ControllerBase
+    NucleusDbContext db,
+    IEmailService emailService,
+    IConfiguration config) : ControllerBase
 {
     // POST /api/v1/auth/register
     [HttpPost("register")]
@@ -150,6 +153,58 @@ public class AuthController(
         return Ok(ApiResponse.Ok(new { message = "Password changed successfully" }));
     }
 
+    // POST /api/v1/auth/forgot-password
+    // Sends a reset link if the email exists (always 200 to prevent enumeration)
+    [HttpPost("forgot-password")]
+    [EnableRateLimiting("auth")]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest req)
+    {
+        var user = await userManager.FindByEmailAsync(req.Email);
+        if (user != null)
+        {
+            var token = await userManager.GeneratePasswordResetTokenAsync(user);
+            var encoded = Uri.EscapeDataString(token);
+            var appUrl = config["APP_URL"] ?? "http://localhost:5000";
+            var resetLink = $"{appUrl.TrimEnd('/')}/reset-password?email={Uri.EscapeDataString(req.Email)}&token={encoded}";
+
+            var html = $"""
+                <p>Hello {user.FirstName},</p>
+                <p>You requested a password reset for your Nucleus account.</p>
+                <p><a href="{resetLink}" style="background:#6366f1;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block;">Reset password</a></p>
+                <p>This link expires in 1 hour. If you didn't request this, you can safely ignore it.</p>
+                """;
+
+            if (emailService.IsConfigured)
+                await emailService.SendAsync(req.Email, "Reset your Nucleus password", html);
+        }
+
+        // Always return 200 — don't reveal whether the email exists
+        return Ok(ApiResponse.Ok(new { message = "If that email is registered, a reset link has been sent." }));
+    }
+
+    // POST /api/v1/auth/reset-password
+    [HttpPost("reset-password")]
+    [EnableRateLimiting("auth")]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest req)
+    {
+        var user = await userManager.FindByEmailAsync(req.Email);
+        if (user == null)
+            return BadRequest(ApiResponse.Fail("Invalid reset link."));
+
+        var result = await userManager.ResetPasswordAsync(user, req.Token, req.NewPassword);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse.Fail(string.Join("; ", result.Errors.Select(e => e.Description))));
+
+        // Revoke all existing refresh tokens — force re-login everywhere
+        var tokens = await db.RefreshTokens
+            .Where(t => t.UserId == user.Id && !t.IsRevoked)
+            .ToListAsync();
+        foreach (var t in tokens) t.IsRevoked = true;
+        await db.SaveChangesAsync();
+
+        return Ok(ApiResponse.Ok(new { message = "Password reset successfully. You can now sign in." }));
+    }
+
     // GET /api/v1/auth/me
     [HttpGet("me")]
     [Authorize]
@@ -199,3 +254,5 @@ public record RefreshRequest(string RefreshToken);
 public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 public record UpdateProfileRequest(string? FirstName, string? LastName);
 public record TokenResponse(string AccessToken, string RefreshToken, int ExpiresIn);
+public record ForgotPasswordRequest(string Email);
+public record ResetPasswordRequest(string Email, string Token, string NewPassword);
