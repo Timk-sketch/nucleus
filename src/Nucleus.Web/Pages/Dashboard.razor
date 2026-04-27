@@ -9,97 +9,260 @@
         <h1 class="page-title">Dashboard</h1>
         <p class="page-subtitle">Marketing OS overview</p>
     </div>
+    <a href="/brands/new" class="btn-primary" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Add brand
+    </a>
 </div>
 
-<div class="stats-grid">
+<!-- KPI row -->
+<div class="stats-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:32px;">
     <div class="stat-card">
         <div class="stat-icon stat-icon--brands">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
-                <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+                <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
             </svg>
         </div>
         <div class="stat-body">
-            <div class="stat-label">Brands</div>
-            <div class="stat-value">@(_loading ? "—" : _brandCount.ToString())</div>
+            <div class="stat-label">Total Brands</div>
+            <div class="stat-value">@(_loading ? "—" : (_data?.Summary.TotalBrands ?? 0).ToString())</div>
         </div>
     </div>
-
     <div class="stat-card">
         <div class="stat-icon stat-icon--provisioning">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
             </svg>
         </div>
         <div class="stat-body">
             <div class="stat-label">Active Brands</div>
-            <div class="stat-value">@(_loading ? "—" : _activeBrands.ToString())</div>
+            <div class="stat-value text-green">@(_loading ? "—" : (_data?.Summary.ActiveBrands ?? 0).ToString())</div>
         </div>
     </div>
-
     <div class="stat-card">
-        <div class="stat-icon stat-icon--health">
+        <div class="stat-icon" style="background:rgba(245,158,11,0.1);color:#f59e0b;">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
             </svg>
         </div>
         <div class="stat-body">
-            <div class="stat-label">API Status</div>
-            <div class="stat-value text-green">Healthy</div>
+            <div class="stat-label">Onboarding</div>
+            <div class="stat-value">@(_loading ? "—" : (_data?.Summary.OnboardingBrands ?? 0).ToString())</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon" style="background:rgba(16,185,129,0.1);color:#10b981;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+        </div>
+        <div class="stat-body">
+            <div class="stat-label">Keywords Tracked</div>
+            <div class="stat-value">@(_loading ? "—" : (_data?.Summary.TotalKeywords ?? 0).ToString())</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon" style="background:rgba(99,102,241,0.1);color:#6366f1;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+        </div>
+        <div class="stat-body">
+            <div class="stat-label">Team Members</div>
+            <div class="stat-value">@(_loading ? "—" : (_data?.Summary.TeamSize ?? 0).ToString())</div>
         </div>
     </div>
 </div>
 
-<div class="section-header">
-    <h2 class="section-title">Quick actions</h2>
-</div>
+<div style="display:grid;grid-template-columns:1fr 300px;gap:24px;align-items:start;">
+    <!-- Brand health cards -->
+    <div>
+        <div class="section-header" style="margin-top:0;">
+            <h2 class="section-title">Brand health</h2>
+            <a href="/brands" style="font-size:13px;color:#6366f1;text-decoration:none;">View all →</a>
+        </div>
 
-<div class="actions-grid">
-    <a href="/brands" class="action-card">
-        <div class="action-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
-                <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
-            </svg>
-        </div>
-        <div>
-            <div class="action-title">Manage Brands</div>
-            <div class="action-desc">View and configure your brand accounts</div>
-        </div>
-    </a>
+        @if (_loading)
+        {
+            <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+        }
+        else if (_data == null || _data.Brands.Count == 0)
+        {
+            <div style="padding:48px;text-align:center;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);color:var(--color-muted);">
+                No brands yet. <a href="/brands/new" style="color:#6366f1;">Add your first brand →</a>
+            </div>
+        }
+        else
+        {
+            <div style="display:flex;flex-direction:column;gap:12px;">
+                @foreach (var brand in _data.Brands)
+                {
+                    <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:20px;display:flex;align-items:center;gap:16px;">
+                        <div style="width:36px;height:36px;border-radius:50%;background:@brand.PrimaryColor;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+                            <span style="font-size:14px;font-weight:800;color:white;">@brand.Name.Substring(0,1).ToUpper()</span>
+                        </div>
+                        <div style="flex:1;min-width:0;">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                                <span style="font-weight:700;font-size:15px;">@brand.Name</span>
+                                <span style="font-size:11px;padding:2px 8px;border-radius:999px;font-weight:700;
+                                             background:@(brand.Status == "active" ? "rgba(16,185,129,0.1)" : "rgba(245,158,11,0.1)");
+                                             color:@(brand.Status == "active" ? "#10b981" : "#f59e0b")">
+                                    @brand.Status
+                                </span>
+                            </div>
+                            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+                                @foreach (var intg in brand.Integrations)
+                                {
+                                    <span style="font-size:11px;padding:2px 8px;border-radius:4px;background:rgba(99,102,241,0.08);color:#6366f1;font-weight:600;">@intg</span>
+                                }
+                                <span style="font-size:11px;padding:2px 8px;border-radius:4px;background:rgba(0,0,0,0.05);color:var(--color-muted);">@brand.Keywords kw</span>
+                            </div>
+                            @if (brand.Steps != null)
+                            {
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <div style="flex:1;height:4px;background:rgba(0,0,0,0.08);border-radius:2px;overflow:hidden;">
+                                        <div style="height:100%;width:@(brand.Steps.HealthPct)%;background:@(brand.Steps.HealthPct == 100 ? "#10b981" : brand.Steps.Failed > 0 ? "#ef4444" : "#6366f1");border-radius:2px;"></div>
+                                    </div>
+                                    <span style="font-size:11px;color:var(--color-muted);white-space:nowrap;">@(brand.Steps.HealthPct)%</span>
+                                </div>
+                            }
+                        </div>
+                        <a href="/brands/@brand.Id/edit" style="font-size:13px;color:var(--color-muted);text-decoration:none;padding:6px 10px;border:1px solid var(--color-border);border-radius:var(--radius);flex-shrink:0;">Edit</a>
+                    </div>
+                }
+            </div>
+        }
+    </div>
 
-    <a href="/brands/new" class="action-card">
-        <div class="action-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
-            </svg>
+    <!-- Sidebar: activity + quick actions -->
+    <div>
+        <div class="section-header" style="margin-top:0;">
+            <h2 class="section-title">Recent activity</h2>
         </div>
-        <div>
-            <div class="action-title">Add Brand</div>
-            <div class="action-desc">Onboard a new brand and provision services</div>
+
+        @if (_loading)
+        {
+            <div style="padding:20px;text-align:center;"><div class="spinner"></div></div>
+        }
+        else if (_data == null || _data.RecentActivity.Count == 0)
+        {
+            <div style="padding:20px;text-align:center;color:var(--color-muted);font-size:14px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);">No activity yet.</div>
+        }
+        else
+        {
+            <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;">
+                @for (int i = 0; i < _data.RecentActivity.Count; i++)
+                {
+                    var item = _data.RecentActivity[i];
+                    var isLast = i == _data.RecentActivity.Count - 1;
+                    <div style="padding:12px 16px;@(isLast ? "" : "border-bottom:1px solid var(--color-border);")display:flex;align-items:center;gap:10px;">
+                        <div style="width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:@(item.Type == "brand" ? "rgba(99,102,241,0.1)" : "rgba(16,185,129,0.1)")">
+                            @if (item.Type == "brand")
+                            {
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/></svg>
+                            }
+                            else
+                            {
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            }
+                        </div>
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">@item.Label</div>
+                            <div style="font-size:11px;color:var(--color-muted);">@(item.Type == "brand" ? "Brand added" : "Keyword tracked") · @item.CreatedAt.ToString("MMM d")</div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        <div class="section-header">
+            <h2 class="section-title">Quick actions</h2>
         </div>
-    </a>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+            <a href="/brands/new" class="action-card" style="padding:12px 16px;">
+                <div class="action-icon" style="width:30px;height:30px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                </div>
+                <div><div class="action-title" style="font-size:13px;">Add Brand</div></div>
+            </a>
+            <a href="/content" class="action-card" style="padding:12px 16px;">
+                <div class="action-icon" style="width:30px;height:30px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                </div>
+                <div><div class="action-title" style="font-size:13px;">Write Content</div></div>
+            </a>
+            <a href="/team" class="action-card" style="padding:12px 16px;">
+                <div class="action-icon" style="width:30px;height:30px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                </div>
+                <div><div class="action-title" style="font-size:13px;">Invite Member</div></div>
+            </a>
+        </div>
+    </div>
 </div>
 
 @code {
-    private int _brandCount;
-    private int _activeBrands;
+    private OverviewData? _data;
     private bool _loading = true;
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            var resp = await Http.GetFromJsonAsync<BrandsResponse>("api/v1/brands");
-            var brands = resp?.Data ?? [];
-            _brandCount = brands.Count;
-            _activeBrands = brands.Count(b => b.Status == "active");
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<OverviewData>>("api/v1/analytics/overview");
+            _data = resp?.Data;
         }
-        catch { /* API unreachable — leave defaults */ }
+        catch { }
         finally { _loading = false; }
     }
 
-    private record BrandSummary(Guid Id, string Code, string Name, string Domain,
-        string PrimaryColor, string Status, int OnboardingStep);
-    private record BrandsResponse(bool Success, List<BrandSummary> Data);
+    private class SummaryData
+    {
+        public int TotalBrands { get; set; }
+        public int ActiveBrands { get; set; }
+        public int OnboardingBrands { get; set; }
+        public int TotalKeywords { get; set; }
+        public int TeamSize { get; set; }
+    }
+
+    private class StepData
+    {
+        public int Total { get; set; }
+        public int Completed { get; set; }
+        public int Failed { get; set; }
+        public int Skipped { get; set; }
+        public int HealthPct { get; set; }
+    }
+
+    private class BrandCard
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string Status { get; set; } = "";
+        public string PrimaryColor { get; set; } = "#6366f1";
+        public int Keywords { get; set; }
+        public List<string> Integrations { get; set; } = [];
+        public StepData? Steps { get; set; }
+    }
+
+    private class ActivityItem
+    {
+        public string Type { get; set; } = "";
+        public string Label { get; set; } = "";
+        public string? Meta { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+    }
+
+    private class OverviewData
+    {
+        public SummaryData Summary { get; set; } = new();
+        public List<BrandCard> Brands { get; set; } = [];
+        public List<ActivityItem> RecentActivity { get; set; } = [];
+    }
+
+    private record ApiWrapper<T>(bool Success, T? Data);
 }
