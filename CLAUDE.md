@@ -103,6 +103,21 @@ MainLayout.razor → global nav + service switcher
 
 ---
 
+## SEO Hub → Nucleus Ship Gate (check ALL before porting any feature)
+
+A feature is ready to move from SEO Hub to Nucleus when every box is checked:
+
+- [ ] **Works end-to-end in SEO Hub** — every screen loads, every action completes, errors handled. Tim uses it daily without complaints.
+- [ ] **Stable data model** — tables and fields haven't changed in 2+ weeks. No open "we need to add a column" items.
+- [ ] **Clear tenant boundary** — you can draw a box around exactly what data belongs to one brand/tenant. No ambiguous cross-brand data pulls.
+- [ ] **AI cost is understood** — if it uses Claude/Flux/etc., cost-per-use is known and a plan limit is defined.
+- [ ] **2 weeks of real use without major change requests** — Tim has used it for 2+ weeks and stopped asking for structural changes.
+- [ ] **Describable in one sentence** — if you can't explain it simply to a customer, it's not ready.
+
+Only after all 6 pass: write it up in `memory/sprints.md` as "proven, ready to port" and sprint it into Nucleus.
+
+---
+
 ## Adding a Feature — Checklist
 
 1. Domain entity in `Nucleus.Domain/Entities/` — inherits `TenantEntity` if tenant-scoped
