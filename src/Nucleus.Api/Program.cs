@@ -50,26 +50,38 @@ if (!string.IsNullOrEmpty(sentryDsn))
 
 // ── Database ──────────────────────────────────────────────────────────────
 // Priority: appsettings → NUCLEUS_DB_CONNECTION (Supabase) → DATABASE_URL (Railway Postgres plugin)
-var rawConnStr = builder.Configuration.GetConnectionString("DefaultConnection")
+var rawConnStr = (
+    builder.Configuration.GetConnectionString("DefaultConnection")
     ?? builder.Configuration["NUCLEUS_DB_CONNECTION"]
-    ?? builder.Configuration["DATABASE_URL"];
+    ?? builder.Configuration["DATABASE_URL"]
+)?.Trim();
 
-if (rawConnStr is null)
-    throw new InvalidOperationException("Connection string not set. Set NUCLEUS_DB_CONNECTION or add a Railway PostgreSQL plugin.");
+if (string.IsNullOrEmpty(rawConnStr))
+    throw new InvalidOperationException("Connection string not set or empty. Set NUCLEUS_DB_CONNECTION or add a Railway PostgreSQL plugin.");
 
-// Railway DATABASE_URL is a postgres:// URI — convert to Npgsql key=value format
+// Railway DATABASE_URL / Supabase connection strings are postgres:// URIs — convert to Npgsql key=value format
 var connectionString = rawConnStr.StartsWith("postgres", StringComparison.OrdinalIgnoreCase)
     ? ConvertPostgresUri(rawConnStr)
     : rawConnStr;
 
 static string ConvertPostgresUri(string uri)
 {
-    var u = new Uri(uri);
+    var u = new Uri(uri.Trim());
     var colonIdx = u.UserInfo.IndexOf(':');
-    var username = colonIdx >= 0 ? u.UserInfo[..colonIdx] : u.UserInfo;
+    var username = Uri.UnescapeDataString(colonIdx >= 0 ? u.UserInfo[..colonIdx] : u.UserInfo);
     var password = colonIdx >= 0 ? Uri.UnescapeDataString(u.UserInfo[(colonIdx + 1)..]) : "";
-    // SSL Mode=Prefer: uses SSL when the server supports it (Railway internal does not require it)
-    return $"Host={u.Host};Port={u.Port};Database={u.AbsolutePath.TrimStart('/')};Username={username};Password={password};SSL Mode=Prefer;Trust Server Certificate=true";
+    // Use NpgsqlConnectionStringBuilder to correctly escape any special characters in the password
+    var csb = new Npgsql.NpgsqlConnectionStringBuilder
+    {
+        Host = u.Host,
+        Port = u.Port > 0 ? u.Port : 5432,
+        Database = u.AbsolutePath.TrimStart('/'),
+        Username = username,
+        Password = password,
+        SslMode = Npgsql.SslMode.Prefer,
+        TrustServerCertificate = true,
+    };
+    return csb.ConnectionString;
 }
 
 builder.Services.AddDbContext<NucleusDbContext>(opts =>
