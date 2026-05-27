@@ -1,126 +1,127 @@
-# Implementation Plan: Nucleus Marketing OS — Remaining Sprints
+# Nucleus Marketing OS — Current State & Roadmap (Updated 2026-05-26)
 
 ## Context
-Sprints 1–3 complete: infra, JWT auth, dashboard shell, brand onboarding + provisioning (simulated). All remaining sprints to ship a functional multi-tenant Marketing OS.
+Sprints 1-22 are complete. Nucleus has a working multi-tenant foundation (auth, brands, billing, GHL sync, keyword ranks, Stripe, CI/CD, super-admin, audit log). Next: build the 5-service-hub architecture, then port proven SEO Hub features into each hub one at a time.
+
+## The Model
+- **SEO Hub** = test/staging — features are built and proven here first
+- **Nucleus** = live SaaS production — only fully working, multi-tenanted features ship here
+- A feature moves SEO Hub → Nucleus when: proven working + multi-tenancy added + plan gates added
+
+## What's Built (Sprint 22 Baseline)
+- Multi-tenant: Tenant → Brand → TenantEntity hierarchy, ICurrentTenantService
+- Auth: JWT + refresh tokens, lockout, password reset, verification, Google Sign-In ready
+- Stripe billing: checkout, portal, webhooks, plan tiers (starter/pro/agency), plan enforcement
+- Super-admin: all-tenants view, impersonate, plan change
+- Audit log: EF interceptor captures CRUD on all key entities
+- GHL contacts sync (Hangfire background job)
+- DataForSEO keyword rank tracking (nightly + on-demand)
+- Email campaigns (basic)
+- WP blog management
+- CI/CD: GitHub Actions build + test on every PR
+- Performance: memory cache, Brotli compression, DisableConcurrentExecution on all jobs
+- Sentry error monitoring
+
+## Current Stack
+C# .NET 9 / Blazor WASM / EF Core 9 / Supabase PostgreSQL / Hangfire / Stripe / Railway
+
+## Sprint 23 — Service Hub Architecture (DO FIRST)
+Build the shell before any hub features. Nothing else starts until this is done.
+
+### Changes
+
+#### `src/Nucleus.Web/Layout/MainLayout.razor`
+- Add service switcher (5 hub pills) to sidebar, below brand selector
+- Add hub-context CSS class to `<div class="app-shell">` based on active hub
+- Hub pills: Content (blue), Search (green), Authority (purple), Distribution (amber), Studio (pink)
+- Global nav items (Dashboard, Brands, Team, Settings, Billing) always visible below switcher
+
+#### New hub layout files (`src/Nucleus.Web/Layout/`)
+- `ContentLayout.razor` — `--hub-color: #3b82f6` + Content focus menu
+- `SearchLayout.razor` — `--hub-color: #16a34a` + Search focus menu
+- `AuthorityLayout.razor` — `--hub-color: #8b5cf6` + Authority focus menu
+- `DistributionLayout.razor` — `--hub-color: #f59e0b` + Distribution focus menu
+- `StudioLayout.razor` — `--hub-color: #ec4899` + Studio focus menu
+
+Each layout injects `--hub-color` as a CSS variable on `:root` → topbar strip + sidebar accent + active nav states pick it up automatically.
+
+#### `src/Nucleus.Web/wwwroot/` CSS
+- Add `--hub-color` CSS variable consumed by `.topbar`, `.nav-item.active`, `.sidebar-logo`
+- Add `.hub-switcher` component styles
+
+#### Page folder structure (`src/Nucleus.Web/Pages/`)
+- `Content/` — future Content Hub pages
+- `Search/` — future Search Hub pages
+- `Authority/` — future Authority Hub pages
+- `Distribution/` — future Distribution Hub pages
+- `Studio/` — future Studio Hub pages
+
+#### Brand selector persistence
+- Store active brand in `localStorage["nucleus_active_brand"]`
+- Read on `MainLayout.razor` init — all hub layouts inherit it
+
+### Verification
+Navigate between 5 hub areas → sidebar accent + topbar color changes → focus menu updates → brand selector persists → no full page reload
 
 ---
 
-## Sprint 4: Live Dashboard + Brand CRUD (Priority 1)
+## Sprint 24 — Content Hub (first complete hub)
 
-### Dashboard — wire real data
-- **File**: `src/Nucleus.Web/Pages/Dashboard.razor:87-98`
-- **Change**: Replace hardcoded `_brandCount=0` with `GET api/v1/brands` count; compute ServicesActive from provisioning steps
-- **Reuses**: existing `BrandsResponse` record from `Brands.razor:95`
+### Scope (all must work before shipping)
+1. Keyword Library — list, add, bulk import, generate from keyword, tag/filter
+2. AI Generator — brand context, page type selector, keyword input, generate blog/page/FAQ
+3. Editorial Calendar — scheduled content view, assign keyword, status tracking
+4. Content Approval Queue — review, approve, request changes
+5. Content Library — all content (published, draft, scheduled) with search + filter
+6. Brand Voice Rules — banned words list per brand
+7. Content Templates — global + brand-specific approved templates
 
-### Brand edit page
-- **File**: `src/Nucleus.Web/Pages/BrandEdit.razor` (new)
-- **Change**: Mirror `NewBrand.razor` form with prefilled values; call `PUT api/v1/brands/{id}`
-- **File**: `src/Nucleus.Api/Controllers/BrandsController.cs:91`
-- **Change**: Add `[HttpPut("{id}")]` and `[HttpDelete("{id}")]` endpoints; reuse `INucleusDbContext`
+### Multi-tenancy additions over SEO Hub version
+- All queries: `WHERE tenant_id = @TenantId AND brand_id = @BrandId`
+- AI usage tracked in `AiUsage` table — blocked + notified at plan limit
+- Templates scoped per tenant (not global)
 
-### BrandDetail — link to edit
-- **File**: `src/Nucleus.Web/Pages/BrandDetail.razor`
-- **Change**: Add "Edit" button → `/brands/{id}/edit`
+### New entities needed
+- `ContentPage` (TenantEntity) — title, keyword, page_type, status, html_content, seo metadata
+- `ContentTemplate` (TenantEntity) — name, page_type, body, is_global
+- `AiUsage` (TenantEntity) — feature, tokens_used, cost, created_at
+- `BannedWord` (TenantEntity) — word, reason
 
----
-
-## Sprint 5: Auth Hardening (Priority 2)
-
-### Auto token refresh on 401
-- **File**: `src/Nucleus.Web/Services/AuthHeaderHandler.cs`
-- **Change**: Override `SendAsync` — on 401 response call `AuthService.RefreshAsync()`, retry once with new token
-- **Reuses**: `AuthService.RefreshAsync()` at `AuthService.cs:52`
-
-### Token expiry check before request
-- **File**: `src/Nucleus.Web/Services/AuthHeaderHandler.cs`
-- **Change**: Parse JWT exp claim before sending; if within 60s of expiry, proactively refresh
-
-### Password change
-- **File**: `src/Nucleus.Api/Controllers/AuthController.cs`
-- **Change**: Add `POST /api/v1/auth/change-password` using `UserManager.ChangePasswordAsync`
-- **File**: `src/Nucleus.Web/Pages/Settings.razor` (new) — form: current password + new password fields
+### EF Migration name
+`dotnet ef migrations add ContentHub`
 
 ---
 
-## Sprint 6: User & Team Management (Priority 3)
+## Sprint 25+ (after Content Hub ships complete)
 
-### API — users list + invite
-- **File**: `src/Nucleus.Api/Controllers/UsersController.cs` (new)
-- **Change**: `GET /api/v1/users` (tenant-scoped), `POST /api/v1/users/invite` (create user + send email)
-- **Reuses**: `ICurrentTenantService` from `CurrentTenantService.cs`, `UserManager<ApplicationUser>`
-
-### Blazor — team page
-- **File**: `src/Nucleus.Web/Pages/Team.razor` (new)
-- **Change**: List tenant users (name, email, role), invite button → modal with email + role selector
-- **File**: `src/Nucleus.Web/Layout/MainLayout.razor`
-- **Change**: Add "Team" nav link → `/team`
+| Sprint | Hub | Key features |
+|--------|-----|-------------|
+| 25 | Search | Rankings, rank history, alerts, topic clusters, content gaps, page performance |
+| 26 | Distribution | Social scheduler, email blasts, campaigns, send log, reviews |
+| 27 | Authority | Backlinks, brand mentions, press releases, schema manager, outreach |
+| 28 | Studio | Page manager (CMS), design studio, image gen, asset library |
 
 ---
 
-## Sprint 7: Real Service Provisioning (Priority 4)
+## Implementation Sequence (Sprint 23)
+1. Update `MainLayout.razor` — hub switcher + CSS variable injection
+2. Create 5 layout files (ContentLayout, SearchLayout, AuthorityLayout, DistributionLayout, StudioLayout)
+3. Add `--hub-color` CSS var to wwwroot styles
+4. Create `Pages/{Hub}/` folder scaffolding
+5. Add brand selector localStorage persistence
+6. Test: navigate all 5 hubs, verify theme switches, brand selector persists
 
-### WordPress verification service
-- **File**: `src/Nucleus.Infrastructure/Services/WordPressProvisioningService.cs` (new)
-- **Change**: `VerifyCredentialsAsync(url, username, appPassword)` — call WP REST API `/wp-json/wp/v2/users/me` with Basic Auth
-- **Pattern**: Portable service class, no HTTP context
-
-### GHL verification service
-- **File**: `src/Nucleus.Infrastructure/Services/GhlProvisioningService.cs` (new)
-- **Change**: `VerifyCredentialsAsync(locationId, apiKey)` — call GHL `/locations/{locationId}` endpoint
-
-### Wire into BrandProvisioningJob
-- **File**: `src/Nucleus.Api/Jobs/BrandProvisioningJob.cs:49`
-- **Change**: Replace `Task.Delay` simulation with real service calls per step name:
-  - `"wordpress"` → `WordPressProvisioningService.VerifyCredentialsAsync`
-  - `"ghl"` → `GhlProvisioningService.VerifyCredentialsAsync`
-  - `"dataforseo"` → stub OK if no creds, else verify
-  - `"email"` / `"backlinks"` → stub OK (future)
-
----
-
-## Sprint 8: Settings Page (Priority 5)
-
-### Tenant settings
-- **File**: `src/Nucleus.Api/Controllers/TenantsController.cs` (new)
-- **Change**: `GET /api/v1/tenants/me` (name, slug, plan), `PUT /api/v1/tenants/me` (name only)
-- **File**: `src/Nucleus.Web/Pages/Settings.razor` (extend Sprint 5 file)
-- **Change**: Add "Company" section (name, plan display), profile section (first/last name)
-
----
-
-## Sprint 9: SEO & Content Tools (Priority 6)
-
-### WordPress blog management
-- **File**: `src/Nucleus.Api/Controllers/ContentController.cs` (new)
-- **Change**: `GET /api/v1/brands/{id}/posts` (proxy to WP REST), `POST` create post — uses `WordPressProvisioningService`
-
-### Keyword tracking dashboard
-- **File**: `src/Nucleus.Web/Pages/BrandSeo.razor` (new)
-- **Change**: `/brands/{id}/seo` — keyword rank table, DataForSEO integration (stub first, real API second)
-
----
-
-## Implementation Sequence
-1. `Dashboard.razor` — wire brand count (30 min)
-2. `BrandsController` — add PUT/DELETE (45 min)
-3. `BrandEdit.razor` — edit form (45 min)
-4. `AuthHeaderHandler` — auto-refresh on 401 (1h)
-5. `AuthController` — change-password endpoint (30 min)
-6. `Settings.razor` — password change UI (30 min)
-7. `UsersController` + `Team.razor` — team management (2h)
-8. `WordPressProvisioningService` + `GhlProvisioningService` — real verification (2h)
-9. Wire real provisioning into `BrandProvisioningJob` (1h)
-10. `TenantsController` + settings company section (1h)
-11. Content + SEO pages (ongoing)
-
-## Edge Cases & Risks
-- **WP REST blocked by firewall/plugin**: Catch HTTP errors in provisioning service, set step status=failed with descriptive error
-- **GHL rate limits**: Add `Polly` retry with exponential backoff on 429
-- **Token refresh race condition**: Use `SemaphoreSlim(1,1)` in `AuthHeaderHandler` to prevent concurrent refresh storms
-- **Team invite email**: Use `IEmailSender` interface (stub first, wire SMTP/SendGrid in settings)
+## Risks
+- Blazor WASM CSS variable injection: set via JS interop or CSS class on body — test both
+- Focus menu in layout: use `[CascadingParameter]` or NavigationManager.Uri to determine active section
+- Brand selector state: `localStorage` bridge needs JS interop wrapper
 
 ## Verification
 ```
-dotnet build src/Nucleus.Api/Nucleus.Api.csproj && dotnet build src/Nucleus.Web/Nucleus.Web.csproj
-git push origin main  # Railway auto-deploy
+dotnet build Nucleus.sln   # clean build
+dotnet test                # all tests pass
+git push origin main       # Railway deploys
+# Navigate: /content/keywords → blue theme
+# Navigate: /search/rankings → green theme
+# Switch brand in selector → persists when switching hubs
 ```
