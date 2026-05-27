@@ -41,7 +41,25 @@ A feature DOES NOT ship to Nucleus until it has been:
 | 21 | CI/CD — GitHub Actions build/test, RegisterCommand validator |
 | 22 | Plan enforcement, SuperAdmin seed, nightly rank job |
 
-**Current state: Sprint 22 complete.**
+**Current state: Sprint 23 complete. Deployment unblocked.**
+
+---
+
+## Sprint 23 — Service Hub Architecture (COMPLETE 2026-05-27)
+
+**Shipped:**
+- `ShellLayout.razor` — shared shell component: sidebar with 5 hub-switcher icon pills, per-hub CSS custom property theming (`--hub-color`, `--hub-color-dim`), brand selector in topbar persisted via localStorage, hub badge in topbar
+- `MainLayout.razor` rebuilt as 3-line thin wrapper delegating to ShellLayout
+- 5 hub layout files: `ContentLayout.razor` (blue), `SearchLayout.razor` (green), `AuthorityLayout.razor` (purple), `DistributionLayout.razor` (amber), `StudioLayout.razor` (pink)
+- Hub landing pages: `Pages/Search/Index.razor`, `Pages/Authority/Index.razor`, `Pages/Distribution/Index.razor`, `Pages/Studio/Index.razor` — each with 6 feature overview cards using hub-themed icons
+- `Pages/Content.razor` wired to ContentLayout
+- `nucleus.css` extended: `.hub-switcher`, `.hub-pill`, `.hub-pill--active`, `.main-column`, `.topbar`, `.topbar--hub`, `.topbar-hub-badge`, `.brand-selector`, `.hub-feature-grid`, `.hub-feature-card`, `.sidebar-divider`
+
+**Also fixed (pre-existing, blocked deployment):**
+- NU1605: bumped `Microsoft.Extensions.DependencyInjection.Abstractions` 9.0.15 → 9.0.16 in Api + Application
+- CS1705: bumped `Microsoft.EntityFrameworkCore` + `Design` 9.0.15 → 9.0.16 in Infrastructure
+- Hangfire crash: `ConvertPostgresUri` now uses `NpgsqlConnectionStringBuilder` (handles special chars in password); added `.Trim()` + `IsNullOrEmpty` guard on connection string env var
+- `NUCLEUS_DB_CONNECTION` Railway env var was invalid — corrected with proper Supabase transaction pooler URI
 
 ---
 
@@ -113,23 +131,7 @@ A feature DOES NOT ship to Nucleus until it has been:
 
 ## Next: Sprint 23+ Roadmap
 
-### Sprint 23 — Service Hub Architecture (FOUNDATION — do first)
-Build the shell pattern before adding any hub features. This is the structural work.
-
-1. Add service switcher to `MainLayout.razor` (5 hub pills in sidebar)
-2. Create per-hub layout files with theme injection:
-   - `ContentLayout.razor` (blue #3b82f6)
-   - `SearchLayout.razor` (green #16a34a)
-   - `AuthorityLayout.razor` (purple #8b5cf6)
-   - `DistributionLayout.razor` (amber #f59e0b)
-   - `StudioLayout.razor` (pink #ec4899)
-3. Layout: global nav always visible + hub focus menu in sidebar + colored topbar strip
-4. Brand selector in topbar — persists via localStorage across hubs
-5. Hub switcher animation (smooth theme transition on hub switch)
-6. Add `Pages/{Hub}/` folder structure to `Nucleus.Web`
-
-**Deliverable:** Navigate between 5 hubs, theme changes, focus menu shows, brand selector persists. No actual hub features yet — just the working shell.
-
+### Sprint 24 — Content Hub (NEXT)
 ### Sprint 24 — Content Hub (first full hub)
 SEO Hub has proven Content features. Port them into Nucleus with multi-tenancy.
 
