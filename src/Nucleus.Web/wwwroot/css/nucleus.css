@@ -11,7 +11,10 @@
   --color-green: #10b981;
   --color-red: #ef4444;
   --color-yellow: #f59e0b;
-  --sidebar-width: 220px;
+  --sidebar-width: 240px;
+  /* Hub theming — overridden per-hub via inline style on .app-shell */
+  --hub-color: #6366f1;
+  --hub-color-dim: rgba(99, 102, 241, 0.12);
   --radius: 8px;
   --radius-sm: 4px;
 }
@@ -184,3 +187,81 @@ label { display: block; font-size: 12px; font-weight: 600;
   border-color: var(--color-border); border-top-color: var(--color-accent); }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* -- Hub Switcher ---------------------------------------------------------- */
+.hub-switcher { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;
+  padding: 12px 8px; border-bottom: 1px solid var(--color-border); margin-bottom: 8px; }
+
+.hub-pill { display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: var(--radius-sm);
+  background: none; border: none; cursor: pointer;
+  color: var(--color-text-muted); transition: color 0.15s, background 0.15s; }
+.hub-pill:hover { background: var(--color-surface-2); color: var(--color-text); }
+.hub-pill--active { background: var(--hub-color-dim); color: var(--hub-color); }
+
+/* -- Sidebar Divider ------------------------------------------------------- */
+.sidebar-divider { height: 1px; background: var(--color-border);
+  margin: 8px 0; }
+
+/* -- Main Column ----------------------------------------------------------- */
+.main-column { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+/* -- Topbar ---------------------------------------------------------------- */
+.topbar { display: flex; align-items: center; justify-content: space-between;
+  height: 52px; padding: 0 24px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface); flex-shrink: 0; }
+
+.topbar--hub { border-bottom-color: var(--hub-color); }
+
+.topbar-left { display: flex; align-items: center; gap: 12px; }
+.topbar-right { display: flex; align-items: center; gap: 10px; }
+
+.topbar-hub-badge { font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--hub-color);
+  background: var(--hub-color-dim); padding: 3px 10px;
+  border-radius: 999px; }
+
+/* -- Brand Selector -------------------------------------------------------- */
+.brand-selector { position: relative; }
+
+.brand-selector-btn { display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px; background: var(--color-surface-2);
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  color: var(--color-text); font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: border-color 0.15s; }
+.brand-selector-btn:hover { border-color: var(--hub-color); }
+
+.brand-selector-dropdown { position: absolute; top: calc(100% + 6px); right: 0;
+  min-width: 200px; background: var(--color-surface);
+  border: 1px solid var(--color-border); border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 100;
+  padding: 4px; }
+
+.brand-option { display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-radius: var(--radius-sm);
+  color: var(--color-text); font-size: 13px; cursor: pointer;
+  transition: background 0.1s; }
+.brand-option:hover { background: var(--color-surface-2); }
+.brand-option--active { color: var(--hub-color); }
+
+/* -- Hub Feature Grid ------------------------------------------------------ */
+.hub-feature-grid { display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px; }
+
+.hub-feature-card { background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius); padding: 20px;
+  display: flex; align-items: flex-start; gap: 16px;
+  transition: border-color 0.15s, background 0.15s; }
+.hub-feature-card:hover { border-color: var(--hub-color);
+  background: var(--color-surface-2); }
+
+.hub-feature-icon { width: 44px; height: 44px; border-radius: var(--radius-sm);
+  background: var(--hub-color-dim); color: var(--hub-color);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; }
+
+.hub-feature-name { font-weight: 600; color: var(--color-text); margin-bottom: 4px; }
+.hub-feature-desc { font-size: 12px; color: var(--color-text-muted); line-height: 1.5; }

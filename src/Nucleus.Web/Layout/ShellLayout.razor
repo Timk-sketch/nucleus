@@ -1,0 +1,259 @@
+@inject AuthService Auth
+@inject JwtAuthStateProvider AuthState
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject HttpClient Http
+
+<div class="app-shell" style="@_shellStyle">
+    <aside class="sidebar">
+        <div class="sidebar-logo">
+            <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
+                <rect width="32" height="32" rx="8" fill="#6366f1"/>
+                <path d="M8 16L14 10L20 16L14 22L8 16Z" fill="white" opacity="0.9"/>
+                <path d="M14 16L20 10L26 16L20 22L14 16Z" fill="white" opacity="0.6"/>
+            </svg>
+            <span>Nucleus</span>
+        </div>
+
+        <!-- ── Service Hub Switcher ──────────────────────────────────── -->
+        <div class="hub-switcher">
+            <button class="hub-pill @(Hub == "content" ? "hub-pill--active" : "")"
+                    title="Content Hub"
+                    @onclick='() => Nav.NavigateTo("/content")'>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+                <span>Content</span>
+            </button>
+            <button class="hub-pill @(Hub == "search" ? "hub-pill--active" : "")"
+                    title="Search Performance Hub"
+                    @onclick='() => Nav.NavigateTo("/search")'>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <span>Search</span>
+            </button>
+            <button class="hub-pill @(Hub == "authority" ? "hub-pill--active" : "")"
+                    title="Authority Hub"
+                    @onclick='() => Nav.NavigateTo("/authority")'>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                </svg>
+                <span>Auth</span>
+            </button>
+            <button class="hub-pill @(Hub == "distribution" ? "hub-pill--active" : "")"
+                    title="Distribution Hub"
+                    @onclick='() => Nav.NavigateTo("/distribution")'>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="18" cy="5" r="3"/>
+                    <circle cx="6" cy="12" r="3"/>
+                    <circle cx="18" cy="19" r="3"/>
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                </svg>
+                <span>Dist</span>
+            </button>
+            <button class="hub-pill @(Hub == "studio" ? "hub-pill--active" : "")"
+                    title="Studio Hub"
+                    @onclick='() => Nav.NavigateTo("/studio")'>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+                    <polyline points="2 17 12 22 22 17"/>
+                    <polyline points="2 12 12 17 22 12"/>
+                </svg>
+                <span>Studio</span>
+            </button>
+        </div>
+
+        <!-- ── Hub Focus Menu (populated per sprint) ────────────────── -->
+        @if (FocusMenu != null)
+        {
+            <div class="hub-focus-section">
+                @FocusMenu
+            </div>
+        }
+
+        <div class="sidebar-divider"></div>
+
+        <!-- ── Global Nav ────────────────────────────────────────────── -->
+        <nav class="sidebar-nav">
+            <NavLink href="/dashboard" Match="NavLinkMatch.All" class="nav-item">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7" rx="1"/>
+                    <rect x="14" y="3" width="7" height="7" rx="1"/>
+                    <rect x="3" y="14" width="7" height="7" rx="1"/>
+                    <rect x="14" y="14" width="7" height="7" rx="1"/>
+                </svg>
+                Dashboard
+            </NavLink>
+            <NavLink href="/brands" class="nav-item">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                    <path d="M2 17l10 5 10-5"/>
+                    <path d="M2 12l10 5 10-5"/>
+                </svg>
+                Brands
+            </NavLink>
+        </nav>
+
+        <!-- ── Footer ────────────────────────────────────────────────── -->
+        <div class="sidebar-footer">
+            <NavLink href="/team" class="nav-item">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+                Team
+            </NavLink>
+            <NavLink href="/billing" class="nav-item">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
+                    <line x1="1" y1="10" x2="23" y2="10"/>
+                </svg>
+                Billing
+            </NavLink>
+            <NavLink href="/settings" class="nav-item">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+                </svg>
+                Settings
+            </NavLink>
+            <button class="nav-item nav-item--signout" @onclick="HandleLogout">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                    <polyline points="16 17 21 12 16 7"/>
+                    <line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+                Sign out
+            </button>
+        </div>
+    </aside>
+
+    <div class="main-column">
+        <!-- ── Topbar ─────────────────────────────────────────────────── -->
+        <header class="topbar @(Hub != null ? "topbar--hub" : "")">
+            <div class="topbar-left">
+                @if (Hub != null)
+                {
+                    <span class="topbar-hub-badge">@HubName</span>
+                }
+            </div>
+            <div class="topbar-right">
+                @if (_brands.Count > 0)
+                {
+                    <div class="brand-selector">
+                        <button class="brand-selector-btn" @onclick="ToggleBrandDropdown">
+                            <div class="brand-selector-dot"
+                                 style="background:@(_selectedBrand?.PrimaryColor ?? "#6366f1")"></div>
+                            <span>@(_selectedBrand?.Name ?? "Select brand")</span>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                                 stroke="currentColor" stroke-width="2.5"
+                                 style="transition:transform 0.15s;transform:rotate(@(_showBrandDropdown ? "180deg" : "0deg"))">
+                                <polyline points="6 9 12 15 18 9"/>
+                            </svg>
+                        </button>
+                        @if (_showBrandDropdown)
+                        {
+                            <div class="brand-selector-dropdown">
+                                @foreach (var brand in _brands)
+                                {
+                                    <button class="brand-option @(_selectedBrand?.Id == brand.Id ? "brand-option--active" : "")"
+                                            @onclick="() => SelectBrand(brand)">
+                                        <div class="brand-option-dot" style="background:@brand.PrimaryColor"></div>
+                                        @brand.Name
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </header>
+
+        <!-- ── Page Content ───────────────────────────────────────────── -->
+        <main class="main-content">
+            @ChildContent
+        </main>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string?        Hub        { get; set; }
+    [Parameter] public string         HubColor   { get; set; } = "#6366f1";
+    [Parameter] public string         HubName    { get; set; } = "";
+    [Parameter] public RenderFragment? FocusMenu { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private List<BrandItem> _brands           = [];
+    private BrandItem?      _selectedBrand;
+    private bool            _showBrandDropdown;
+
+    private string _shellStyle => Hub != null
+        ? $"--hub-color:{HubColor};--hub-color-dim:{HubColor}22;"
+        : "";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await LoadBrands();
+        StateHasChanged();
+    }
+
+    private async Task LoadBrands()
+    {
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<BrandListResp>("api/v1/brands");
+            if (resp?.Success == true && resp.Data != null)
+            {
+                _brands = resp.Data
+                    .Select(b => new BrandItem(b.Id, b.Name, b.PrimaryColor ?? "#6366f1"))
+                    .ToList();
+
+                var savedId = await JS.InvokeAsync<string?>("localStorage.getItem", "nucleus_brand");
+                if (Guid.TryParse(savedId, out var id))
+                    _selectedBrand = _brands.FirstOrDefault(b => b.Id == id);
+                _selectedBrand ??= _brands.FirstOrDefault();
+            }
+        }
+        catch { /* not authenticated or no brands yet — silent */ }
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand        = brand;
+        _showBrandDropdown    = false;
+        await JS.InvokeVoidAsync("localStorage.setItem", "nucleus_brand", brand.Id.ToString());
+    }
+
+    private void ToggleBrandDropdown() => _showBrandDropdown = !_showBrandDropdown;
+
+    private async Task HandleLogout()
+    {
+        await Auth.LogoutAsync();
+        await AuthState.NotifyStateChanged();
+        Nav.NavigateTo("/login");
+    }
+
+    private record BrandItem(Guid Id, string Name, string PrimaryColor);
+
+    private class BrandListResp
+    {
+        public bool           Success { get; set; }
+        public List<BrandDto>? Data   { get; set; }
+    }
+
+    private class BrandDto
+    {
+        public Guid    Id           { get; set; }
+        public string  Name         { get; set; } = "";
+        public string? PrimaryColor { get; set; }
+    }
+}
