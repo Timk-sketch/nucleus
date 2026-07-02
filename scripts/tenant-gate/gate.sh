@@ -40,19 +40,23 @@ else
   echo "  ok none (or all annotated)"
 fi
 
-echo "== 3. RLS present in migrations (Constitution invariant 2 — advisory until NUC-ISO-1) =="
-# Every tenant table should get RLS enabled in a migration. Advisory (warn, don't fail)
-# until RLS ships; then set WARN_ONLY=0 to make it blocking.
-WARN_ONLY=1
-if ! grep -RIlE 'ENABLE ROW LEVEL SECURITY' src/ >/dev/null 2>&1 ; then
-  if [ "$WARN_ONLY" -eq 1 ]; then
-    echo "  !  (advisory) No 'ENABLE ROW LEVEL SECURITY' in any migration — DB-layer isolation missing (NUC-ISO-1)."
-  else
-    echo "  x  No RLS found in migrations — DB-layer tenant isolation is missing."
-    fail=1
+echo "== 3. RLS per tenant table in migrations (invariant 2 — coarse advisory; see note) =="
+# COARSE TRIPWIRE ONLY. Greps migrations for an RLS statement mentioning each expected tenant
+# table. A substring can't prove FORCE or a correct policy, so this stays ADVISORY — the
+# AUTHORITATIVE per-table check (ENABLE + FORCE + policy) is the NUC-ISO-1 integration test
+# against pg_policies / pg_class.relforcerowsecurity. Do not treat this grep as the gate.
+TENANT_TABLES="brands brand_keywords ghl_contacts keyword_ranks email_campaigns brand_provisioning_steps audit_logs"
+rls_files=$(grep -RIlE 'ENABLE ROW LEVEL SECURITY' src/Nucleus.Infrastructure/Migrations 2>/dev/null)
+missing=""
+for t in $TENANT_TABLES; do
+  if [ -z "$rls_files" ] || ! printf '%s\n' "$rls_files" | xargs -r grep -lE "\\b$t\\b" >/dev/null 2>&1 ; then
+    missing="$missing $t"
   fi
+done
+if [ -n "$missing" ]; then
+  echo "  !  (advisory) tenant tables with no RLS statement in migrations:$missing (NUC-ISO-1)."
 else
-  echo "  ok found"
+  echo "  ok every tenant table is referenced by an RLS migration"
 fi
 
 exit $fail
