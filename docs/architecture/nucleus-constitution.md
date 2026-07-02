@@ -70,3 +70,4 @@ understood · 2 weeks real use with no structural change requests · describable
 - **NUC-ISO-1** — add RLS + `TenantId` policy migrations for every tenant table *(database backstop)*
 - **NUC-ISO-2** — auto-stamp `TenantId` in `SaveChangesAsync`; un-skip its architecture test
 - **NUC-ISO-3** — move dev secrets out of committed config into user-secrets; confirm prod is env-only
+- **NUC-ISO-5** — annotate the 4 reviewed-legitimate `IgnoreQueryFilters()` bypasses (`AdminController` SuperAdmin audit view; `BrandProvisioningJob` background job) with `// tenant-gate:allow`, then flip the bypass guard to blocking
