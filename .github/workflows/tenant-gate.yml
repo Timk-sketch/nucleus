@@ -1,0 +1,25 @@
+name: tenant-isolation-gate
+
+# The machine-enforced half of the Nucleus Constitution (section 3).
+# Runs on every PR into master. A red gate blocks merge.
+on:
+  pull_request:
+    branches: [ master ]
+  push:
+    branches: [ master ]
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Static tenant guards (secrets / filter-bypass / RLS)
+        run: bash scripts/tenant-gate/gate.sh
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Architecture tests (tenant query filters, TenantId stamping)
+        run: dotnet test tests/Nucleus.Architecture.Tests/Nucleus.Architecture.Tests.csproj --nologo
