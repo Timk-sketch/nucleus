@@ -21,7 +21,7 @@ exists on PostgREST/GoTrue connections). Use the **session-variable** pattern:
 
 1. The app sets a per-connection Postgres variable `app.current_tenant` from `ICurrentTenantService`.
 2. Each tenant table has an RLS policy: rows visible/writable only when
-   `tenant_id = current_setting('app.current_tenant', true)::uuid`.
+   `"TenantId" = current_setting('app.current_tenant', true)::uuid`.
 3. Tables use **both** `ENABLE` and `FORCE ROW LEVEL SECURITY`.
 
 ### Non-obvious correctness — get any of these wrong and RLS silently does nothing
@@ -35,6 +35,10 @@ exists on PostgREST/GoTrue connections). Use the **session-variable** pattern:
 - **Unset tenant must deny, not error.** `current_setting('app.current_tenant', true)` (missing_ok)
   → NULL → zero rows. Deny-by-default also protects Hangfire jobs that forget context.
 - **`WITH CHECK` for writes** so a row can't be inserted/updated into another tenant.
+- **The tenant column is `"TenantId"` (quoted PascalCase), not `tenant_id`.** No snake_case
+  convention is configured, so EF creates PascalCase columns — the migrations show `TenantId`.
+  Unquoted `tenant_id` folds to lowercase and matches nothing. Tables are snake_case
+  (`brands`, …) so they need no quoting; the column does.
 
 ## Implementation
 1. **Connection interceptor** (`Nucleus.Infrastructure`): a `DbConnectionInterceptor` whose
@@ -45,13 +49,15 @@ exists on PostgREST/GoTrue connections). Use the **session-variable** pattern:
    ALTER TABLE <t> ENABLE ROW LEVEL SECURITY;
    ALTER TABLE <t> FORCE  ROW LEVEL SECURITY;
    CREATE POLICY tenant_isolation ON <t>
-     USING      (tenant_id = current_setting('app.current_tenant', true)::uuid)
-     WITH CHECK (tenant_id = current_setting('app.current_tenant', true)::uuid);
+     USING      ("TenantId" = current_setting('app.current_tenant', true)::uuid)
+     WITH CHECK ("TenantId" = current_setting('app.current_tenant', true)::uuid);
    ```
    Provide a working `Down`. Guard idempotently.
 3. **Background / admin paths:** any Hangfire job or maintenance path touching tenant data must set
    `app.current_tenant`, or route through an explicitly `// tenant-gate:allow`-annotated admin flow.
-4. **Flip the gate:** set `WARN_ONLY=0` in `scripts/tenant-gate/gate.sh`.
+4. **Make the gate authoritative:** the NUC-ISO-1 integration test (per-table `pg_policies` /
+   `pg_class.relforcerowsecurity` assertions) is the blocking check. The `gate.sh` RLS grep stays
+   a coarse advisory — a substring can't prove FORCE or a correct policy per table.
 5. **Docs:** Constitution §3 invariant 2 → ✅; changelog entry.
 
 ## Acceptance criteria (outcome rubric)
@@ -62,7 +68,8 @@ exists on PostgREST/GoTrue connections). Use the **session-variable** pattern:
 - [ ] No session-variable leakage across pooled connections.
 - [ ] Every `TenantEntity` table has ENABLE + FORCE + policy (assert via `pg_policies` /
       `pg_class.relforcerowsecurity`).
-- [ ] `gate.sh` RLS check flipped to blocking and passing.
+- [ ] The per-table integration test above is the authoritative (blocking) RLS check; the
+      `gate.sh` RLS grep remains a coarse advisory.
 - [ ] Migration `Down` cleanly reverses; Constitution updated; changelog added.
 
 ## Out of scope
