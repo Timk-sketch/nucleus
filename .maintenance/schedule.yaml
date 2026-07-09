@@ -1,0 +1,39 @@
+# Nucleus Maintenance Worker Schedule
+# Used by Railway cron service to trigger maintenance jobs
+# Cron syntax: minute hour day month weekday
+
+workers:
+  - name: security-sweep
+    script: scripts/maintenance/security-sweep.js
+    schedule: "0 9 * * MON"
+    description: "Weekly Monday 9 AM — NuGet CVEs, secret scan, missing [Authorize], RLS audit"
+    slack_channel: nucleus-alerts
+    on_failure: page_tim
+
+  - name: perf-audit
+    script: scripts/maintenance/perf-audit.js
+    schedule: "0 9 1 * *"
+    description: "Monthly 1st of month 9 AM — API benchmarks, EF N+1 detection, baseline comparison"
+    slack_channel: nucleus-alerts
+    on_failure: page_tim
+
+  - name: feature-optimize
+    script: scripts/maintenance/feature-optimize.js
+    schedule: "0 9 * * WED"
+    description: "Bi-weekly Wednesday 9 AM — AI cost per tenant, Haiku routing flags, upsell signals"
+    slack_channel: nucleus-alerts
+    on_failure: notify_only
+
+  - name: dep-update
+    script: scripts/maintenance/dep-update.js
+    schedule: "0 9 * * FRI"
+    description: "Weekly Friday 9 AM — NuGet patch auto-update, minor/major flagged for review"
+    slack_channel: nucleus-alerts
+    on_failure: notify_only
+
+# Required env vars for all maintenance workers:
+# ANTHROPIC_API_KEY (feature-optimize)
+# SLACK_NUCLEUS_WEBHOOK
+# NUCLEUS_STAGING_URL (perf-audit)
+# NUCLEUS_SUPABASE_URL (feature-optimize)
+# NUCLEUS_SUPABASE_SERVICE_KEY (feature-optimize)

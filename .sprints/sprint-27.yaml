@@ -1,0 +1,70 @@
+sprint: 27
+name: Authority Hub
+status: pending
+
+entities:
+  - name: BacklinkRecord
+    base: TenantEntity
+    fields: [source_url, target_url, anchor_text, domain_rating, first_seen_at, last_seen_at, is_active]
+    ef_config: true
+  - name: BrandMention
+    base: TenantEntity
+    fields: [source_url, mention_text, sentiment, discovered_at, is_reviewed]
+    ef_config: true
+  - name: SchemaTemplate
+    base: TenantEntity
+    fields: [page_type, schema_type, template_json, is_active]
+    ef_config: true
+  - name: OutreachQueueItem
+    base: TenantEntity
+    fields: [target_url, contact_email, status, notes, outreach_at]
+    ef_config: true
+
+migration: AuthorityHub
+
+commands:
+  - SyncBacklinksCommand
+  - MarkMentionReviewedCommand
+  - CreateSchemaTemplateCommand
+  - AddOutreachItemCommand
+  - SendOutreachCommand
+
+queries:
+  - GetBacklinkProfileQuery
+  - GetBrandMentionsQuery
+  - GetSchemaLibraryQuery
+  - GetOutreachQueueQuery
+
+blazor_pages:
+  - Pages/Authority/Backlinks/Index.razor
+  - Pages/Authority/Mentions/Index.razor
+  - Pages/Authority/Schema/Index.razor
+  - Pages/Authority/Outreach/Index.razor
+
+port_map:
+  - seohub_file: src/services/seo-backlink-tracker.js
+    nucleus_target: Application/Authority/Commands/SyncBacklinksCommand.cs
+    notes: "DataForSEO backlink sync. Scope to tenant brand domain."
+  - seohub_file: src/services/schema-generator.js
+    nucleus_target: Application/Authority/Commands/CreateSchemaTemplateCommand.cs
+    notes: "Auto-schema by page_type. FAQPage, HowTo, Article, Service. Per-tenant templates."
+
+plan_gates:
+  starter:
+    - schema_templates_view
+  pro:
+    - backlink_tracking
+    - brand_mentions
+    - schema_template_editor
+  agency:
+    - outreach_queue
+    - bulk_schema_application
+
+acceptance_criteria:
+  - dotnet build Nucleus.sln succeeds
+  - dotnet test passes
+  - EF migration AuthorityHub applies cleanly
+  - GET /api/authority/backlinks returns backlink profile for tenant brand domain
+  - Schema template applies correct JSON-LD for FAQPage type
+  - /authority/backlinks Blazor page loads
+  - /authority/schema Blazor page shows template library with page_type filter

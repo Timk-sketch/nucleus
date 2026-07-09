@@ -1,0 +1,64 @@
+sprint: 26
+name: Distribution Hub
+status: pending
+
+entities:
+  - name: SocialPost
+    base: TenantEntity
+    fields: [content_page_id, platform, caption, scheduled_at, status, external_post_id]
+    ef_config: true
+  - name: EmailCampaignMessage
+    base: TenantEntity
+    fields: [campaign_id, subject, html_body, sent_at, open_count, click_count]
+    ef_config: true
+  - name: SendLog
+    base: TenantEntity
+    fields: [channel, recipient_count, sent_at, provider, status, error_message]
+    ef_config: true
+
+migration: DistributionHub
+
+commands:
+  - ScheduleSocialPostCommand
+  - SendEmailCampaignCommand
+  - CreateEmailCampaignCommand
+
+queries:
+  - GetSocialScheduleQuery
+  - GetEmailCampaignsQuery
+  - GetSendLogQuery
+  - GetCampaignStatsQuery
+
+blazor_pages:
+  - Pages/Distribution/Social/Index.razor
+  - Pages/Distribution/Email/Index.razor
+  - Pages/Distribution/Campaigns/Index.razor
+  - Pages/Distribution/SendLog/Index.razor
+
+port_map:
+  - seohub_file: src/services/ghl-email-blasts/blast-sender.js
+    nucleus_target: Application/Distribution/Commands/SendEmailCampaignCommand.cs
+    notes: "GHL email blast logic. In Nucleus: pluggable transport (GHL or SES per brand config)."
+  - seohub_file: src/services/blog-social-pipeline.js
+    nucleus_target: Application/Distribution/Commands/ScheduleSocialPostCommand.cs
+    notes: "Blog publish → social post cascade. Nucleus: GHL Social Planner or Vista per brand."
+
+plan_gates:
+  starter:
+    - social_scheduling_3_posts_per_month
+  pro:
+    - unlimited_social_scheduling
+    - email_campaigns
+    - send_log
+  agency:
+    - campaign_analytics
+    - multi_channel_sequencing
+
+acceptance_criteria:
+  - dotnet build Nucleus.sln succeeds
+  - dotnet test passes
+  - EF migration DistributionHub applies cleanly
+  - POST /api/distribution/social schedules a post for the tenant brand
+  - POST /api/distribution/email sends campaign via configured provider
+  - /distribution/social Blazor page shows scheduled posts calendar
+  - /distribution/email Blazor page shows campaign list + send button

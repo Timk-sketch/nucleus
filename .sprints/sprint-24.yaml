@@ -1,0 +1,84 @@
+sprint: 24
+name: Content Hub
+status: pending
+
+entities:
+  - name: ContentPage
+    base: TenantEntity
+    fields: [title, keyword_id, page_type, status, html_content, seo_title, meta_description, published_at]
+    ef_config: true
+  - name: ContentTemplate
+    base: TenantEntity
+    fields: [name, page_type, body, is_global, is_active]
+    ef_config: true
+  - name: AiUsage
+    base: TenantEntity
+    fields: [feature, tokens_used, cost_usd, model, created_at]
+    ef_config: true
+  - name: BannedWord
+    base: TenantEntity
+    fields: [word, reason, brand_id]
+    ef_config: true
+
+migration: ContentHub
+
+commands:
+  - GenerateContentCommand
+  - CreateContentPageCommand
+  - ApproveContentPageCommand
+  - AddBannedWordCommand
+  - CreateContentTemplateCommand
+
+queries:
+  - GetKeywordLibraryQuery
+  - GetContentLibraryQuery
+  - GetEditorialCalendarQuery
+  - GetContentApprovalQueueQuery
+  - GetBrandVoiceQuery
+  - GetContentTemplatesQuery
+
+blazor_pages:
+  - Pages/Content/Keywords/Index.razor
+  - Pages/Content/Generator/Index.razor
+  - Pages/Content/Calendar/Index.razor
+  - Pages/Content/Queue/Index.razor
+  - Pages/Content/Library/Index.razor
+  - Pages/Content/BrandVoice/Index.razor
+  - Pages/Content/Templates/Index.razor
+
+port_map:
+  - seohub_file: src/services/seo-content-generator.js
+    nucleus_target: Application/Content/Commands/GenerateContentCommand.cs
+    notes: "Multi-tenant: scope by TenantId+BrandId. Track cost in AiUsage after every generation."
+  - seohub_file: src/query-interface/routes/seo-content/keywords.js
+    nucleus_target: Application/Content/Queries/GetKeywordLibraryQuery.cs
+    notes: "Keywords belong to BrandId within TenantId. Support bulk import."
+  - seohub_file: src/services/seo-editorial-calendar.js
+    nucleus_target: Application/Content/Queries/GetEditorialCalendarQuery.cs
+    notes: "Scheduled content by week/month view. Status: scheduled/draft/published."
+
+plan_gates:
+  starter:
+    - keyword_library_view
+    - generator_max_5_per_month
+    - content_library_view
+  pro:
+    - generator_unlimited
+    - editorial_calendar
+    - approval_queue
+    - brand_voice_rules
+  agency:
+    - all_pro_features
+    - multi_brand_templates
+    - bulk_operations
+
+acceptance_criteria:
+  - dotnet build Nucleus.sln succeeds (0 errors, 0 warnings)
+  - dotnet test passes (all existing + new Content Hub tests)
+  - EF migration ContentHub applies cleanly
+  - GET /api/content/keywords returns 200 for authenticated tenant
+  - POST /api/content/generate creates ContentPage with correct TenantId
+  - AiUsage row written after every generation call
+  - Starter plan blocked at 5 generations per month (returns 402)
+  - /content/keywords Blazor page loads and displays keyword list
+  - /content/generator Blazor page submits and shows generated content

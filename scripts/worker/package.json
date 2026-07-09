@@ -1,0 +1,19 @@
+{
+  "name": "nucleus-sprint-worker",
+  "version": "1.0.0",
+  "description": "Autonomous Claude API worker for Nucleus sprint builds",
+  "type": "module",
+  "scripts": {
+    "sprint": "node run-sprint.js",
+    "security": "node ../maintenance/security-sweep.js",
+    "perf": "node ../maintenance/perf-audit.js",
+    "optimize": "node ../maintenance/feature-optimize.js",
+    "deps": "node ../maintenance/dep-update.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "js-yaml": "^4.1.0",
+    "node-fetch": "^3.3.2",
+    "dotenv": "^16.4.0"
+  }
+}

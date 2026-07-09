@@ -1,0 +1,72 @@
+sprint: 25
+name: Search Hub
+status: pending
+
+entities:
+  - name: KeywordRankSnapshot
+    base: TenantEntity
+    fields: [keyword_id, position, url, search_volume, competition, checked_at]
+    ef_config: true
+  - name: SearchAlert
+    base: TenantEntity
+    fields: [keyword_id, alert_type, threshold, triggered_at, is_active]
+    ef_config: true
+  - name: TopicCluster
+    base: TenantEntity
+    fields: [name, pillar_keyword, cluster_keywords_json, status]
+    ef_config: true
+
+migration: SearchHub
+
+commands:
+  - TriggerRankCheckCommand
+  - CreateSearchAlertCommand
+  - CreateTopicClusterCommand
+  - DismissAlertCommand
+
+queries:
+  - GetRankingsDashboardQuery
+  - GetRankHistoryQuery
+  - GetSearchAlertsQuery
+  - GetTopicClustersQuery
+  - GetContentGapsQuery
+  - GetPagePerformanceQuery
+
+blazor_pages:
+  - Pages/Search/Rankings/Index.razor
+  - Pages/Search/History/Index.razor
+  - Pages/Search/Alerts/Index.razor
+  - Pages/Search/Clusters/Index.razor
+  - Pages/Search/Gaps/Index.razor
+  - Pages/Search/Performance/Index.razor
+
+port_map:
+  - seohub_file: src/sync/dataforseo-keyword-sync.js
+    nucleus_target: Application/Search/Commands/TriggerRankCheckCommand.cs
+    notes: "DataForSEO already integrated (Sprint 22 baseline). Wrap existing logic with TenantId scoping."
+  - seohub_file: src/services/seo-rank-tracker.js
+    nucleus_target: Application/Search/Queries/GetRankingsDashboardQuery.cs
+    notes: "Rankings per brand per keyword. History chart needs last 90 days of snapshots."
+
+plan_gates:
+  starter:
+    - rankings_view_10_keywords
+    - manual_rank_check
+  pro:
+    - unlimited_keyword_tracking
+    - rank_history_charts
+    - search_alerts
+    - topic_clusters
+  agency:
+    - content_gap_analysis
+    - page_performance_gsc_integration
+
+acceptance_criteria:
+  - dotnet build Nucleus.sln succeeds
+  - dotnet test passes
+  - EF migration SearchHub applies cleanly
+  - GET /api/search/rankings returns keyword positions for authenticated tenant
+  - Rank check triggers DataForSEO call scoped to tenant brand
+  - Alert fires when keyword drops below configured threshold
+  - /search/rankings Blazor page loads with rank data
+  - /search/history shows 90-day rank history chart

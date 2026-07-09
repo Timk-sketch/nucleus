@@ -1,0 +1,77 @@
+sprint: 28
+name: Studio Hub
+status: pending
+
+entities:
+  - name: WebsitePage
+    base: TenantEntity
+    fields: [slug, title, page_type, html_content, seo_title, meta_description, og_image, status, published_at, schema_json]
+    ef_config: true
+  - name: DesignAsset
+    base: TenantEntity
+    fields: [name, asset_type, url, width, height, file_size, uploaded_at]
+    ef_config: true
+  - name: VideoAsset
+    base: TenantEntity
+    fields: [name, url, thumbnail_url, duration_seconds, platform, uploaded_at]
+    ef_config: true
+
+migration: StudioHub
+
+commands:
+  - CreateWebsitePageCommand
+  - PublishWebsitePageCommand
+  - GenerateDesignCommand
+  - UploadAssetCommand
+  - GenerateImageCommand
+
+queries:
+  - GetPageLibraryQuery
+  - GetAssetLibraryQuery
+  - GetDesignStudioContextQuery
+
+blazor_pages:
+  - Pages/Studio/Pages/Index.razor
+  - Pages/Studio/Pages/Editor.razor
+  - Pages/Studio/Design/Index.razor
+  - Pages/Studio/Images/Index.razor
+  - Pages/Studio/Assets/Index.razor
+
+port_map:
+  - seohub_file: src/cms/page-renderer.js
+    nucleus_target: Application/Studio/Commands/PublishWebsitePageCommand.cs
+    notes: "CMS page publish. Nucleus replaces src/cms/ entirely — this is the Studio Hub."
+  - seohub_file: src/services/flux-image-generator.js
+    nucleus_target: Application/Studio/Commands/GenerateImageCommand.cs
+    notes: "Flux image generation. Track cost in AiUsage."
+  - seohub_file: src/query-interface/routes/seo-design-studio.js
+    nucleus_target: Application/Studio/Queries/GetDesignStudioContextQuery.cs
+    notes: "Design Studio AI context. Port brand kit + style config into C# service."
+
+plan_gates:
+  starter:
+    - page_library_view
+    - 5_published_pages_max
+  pro:
+    - unlimited_pages
+    - design_studio
+    - asset_library
+  agency:
+    - image_generator
+    - video_library
+    - bulk_publish
+
+retirement_trigger: true
+# When this sprint ships, SEO Hub can be retired.
+# Verify retirement-checklist.md shows all rows complete before shutdown.
+
+acceptance_criteria:
+  - dotnet build Nucleus.sln succeeds
+  - dotnet test passes
+  - EF migration StudioHub applies cleanly
+  - POST /api/studio/pages creates WebsitePage for tenant
+  - POST /api/studio/pages/{id}/publish sets status=published + published_at
+  - GET /api/studio/assets returns asset library scoped to tenant
+  - /studio/pages Blazor page loads page inventory
+  - /studio/pages/editor Blazor page opens page editor
+  - retirement-checklist.md shows all rows = complete before any SEO Hub shutdown
