@@ -188,6 +188,22 @@ Plan gates: Starter = AI generator limited to 5/month; Pro/Agency = unlimited
 
 ---
 
+## Worker System (Added 2026-07-09)
+
+Sprint worker + maintenance pipeline live on master (commit 23db922).
+- Staging URL confirmed: `https://nucleus-staging-0a33.up.railway.app` (Railway Staging env, already live)
+- Production URL: `https://nucleus-production.up.railway.app`
+- Sprint specs: `.sprints/sprint-24.yaml` → `sprint-28.yaml`
+- Runner: `cd scripts/worker && npm install && node run-sprint.js 24`
+- Auto-chains 24 → 25 → 26 → 27 → 28. SEO Hub retires when all 23 checklist rows = complete.
+
+**Pending wiring before first sprint run:**
+1. Railway → Staging env → Settings → Deploy Webhook → copy URL → add as GitHub Actions secret `RAILWAY_STAGING_DEPLOY_WEBHOOK`
+2. Create `scripts/worker/.env` with: `ANTHROPIC_API_KEY`, `SLACK_NUCLEUS_WEBHOOK`, `NUCLEUS_STAGING_URL=https://nucleus-staging-0a33.up.railway.app`, `NUCLEUS_PROD_URL=https://nucleus-production.up.railway.app`
+3. Add Railway cron service for maintenance workers per `.maintenance/schedule.yaml`
+
+---
+
 ## Environment Variables (Railway)
 
 | Var | Status | Purpose |
@@ -203,3 +219,4 @@ Plan gates: Starter = AI generator limited to 5/month; Pro/Agency = unlimited
 | SUPER_ADMIN_EMAIL | Live | Admin panel seed |
 | REDIS_URL | Pending | Distributed cache (Sprint 29+) |
 | GOOGLE_CLIENT_ID | Pending | Google Sign-In (Sprint 23) |
+| RAILWAY_STAGING_DEPLOY_WEBHOOK | Pending | GitHub Actions → staging deploy trigger |
