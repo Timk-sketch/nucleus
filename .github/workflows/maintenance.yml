@@ -1,0 +1,84 @@
+name: Maintenance
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"   # Monday 9 AM UTC — security sweep
+    - cron: "0 9 * * 3"   # Wednesday 9 AM UTC — feature optimizer
+    - cron: "0 9 * * 5"   # Friday 9 AM UTC — dependency updater
+    - cron: "0 9 1 * *"   # 1st of month 9 AM UTC — performance audit
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Which maintenance job to run"
+        required: true
+        type: choice
+        options:
+          - security-sweep
+          - feature-optimize
+          - dep-update
+          - perf-audit
+
+jobs:
+  security-sweep:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'security-sweep' || github.event_name == 'schedule' && (github.event.schedule == '0 9 * * 1')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: cd scripts/worker && npm install
+      - run: node scripts/maintenance/security-sweep.js
+        env:
+          SLACK_NUCLEUS_WEBHOOK: ${{ secrets.SLACK_NUCLEUS_WEBHOOK }}
+
+  feature-optimize:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'feature-optimize' || github.event_name == 'schedule' && (github.event.schedule == '0 9 * * 3')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: cd scripts/worker && npm install
+      - run: node scripts/maintenance/feature-optimize.js
+        env:
+          SLACK_NUCLEUS_WEBHOOK: ${{ secrets.SLACK_NUCLEUS_WEBHOOK }}
+          NUCLEUS_SUPABASE_URL: ${{ secrets.NUCLEUS_SUPABASE_URL }}
+          NUCLEUS_SUPABASE_SERVICE_KEY: ${{ secrets.NUCLEUS_SUPABASE_SERVICE_KEY }}
+
+  dep-update:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'dep-update' || github.event_name == 'schedule' && (github.event.schedule == '0 9 * * 5')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: dotnet tool install -g dotnet-outdated-tool
+      - run: cd scripts/worker && npm install
+      - run: node scripts/maintenance/dep-update.js
+        env:
+          SLACK_NUCLEUS_WEBHOOK: ${{ secrets.SLACK_NUCLEUS_WEBHOOK }}
+
+  perf-audit:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'perf-audit' || github.event_name == 'schedule' && (github.event.schedule == '0 9 1 * *')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: cd scripts/worker && npm install
+      - run: node scripts/maintenance/perf-audit.js
+        env:
+          SLACK_NUCLEUS_WEBHOOK: ${{ secrets.SLACK_NUCLEUS_WEBHOOK }}
+          NUCLEUS_STAGING_URL: ${{ secrets.NUCLEUS_STAGING_URL }}
