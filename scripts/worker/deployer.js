@@ -16,15 +16,17 @@ export async function deploy(sprintNumber, dryRun = false) {
   git(`add -A`);
   git(`commit -m "feat: Sprint ${sprintNumber} — ${getSprintName(sprintNumber)}"`);
 
-  // 2. Push to staging branch
+  // 2. Push to staging branch — Railway auto-deploys via GitHub integration (no webhook needed)
   git(`push origin HEAD:staging`);
-  console.log(`[deployer] Pushed to staging branch`);
+  console.log(`[deployer] Pushed to staging branch — Railway will auto-deploy`);
 
-  // 3. Wait for staging health
+  // 3. Wait for staging health (Railway deploys asynchronously — poll until live)
   if (STAGING_URL && !dryRun) {
+    console.log(`[deployer] Waiting for Railway staging deploy to complete...`);
+    await sleep(30_000); // give Railway ~30s to start the deploy
     await pollHealth(`${STAGING_URL}/health`, 'staging', 300_000);
   } else {
-    console.log(`[deployer] ${dryRun ? '(dry-run)' : 'No NUCLEUS_STAGING_URL'} — skipping staging health wait`);
+    console.log(`[deployer] ${dryRun ? '(dry-run)' : 'No NUCLEUS_STAGING_URL set'} — skipping staging health wait`);
   }
 
   // 4. Promote to master (triggers prod Railway deploy)
@@ -38,6 +40,8 @@ export async function deploy(sprintNumber, dryRun = false) {
 
   console.log(`[deployer] Sprint ${sprintNumber} deployed to production: ${PROD_URL}`);
 }
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 function getSprintName(n) {
   const names = { 24: 'Content Hub', 25: 'Search Hub', 26: 'Distribution Hub', 27: 'Authority Hub', 28: 'Studio Hub' };
