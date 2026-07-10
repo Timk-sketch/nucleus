@@ -327,10 +327,19 @@ app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Nucleus v1"
 
 app.MapControllers();
 app.MapHub<ProvisioningHub>("/hubs/provisioning");
-app.MapHangfireDashboard("/hangfire", new DashboardOptions
+// Hangfire dashboard — wrapped so a DB connection failure at startup doesn't crash the whole app.
+// If Hangfire storage can't connect (e.g. EMAXCONN), the API still starts and serves /health.
+try
 {
-    Authorization = [new HangfireAuthFilter(app.Configuration)],
-});
+    app.MapHangfireDashboard("/hangfire", new DashboardOptions
+    {
+        Authorization = [new HangfireAuthFilter(app.Configuration)],
+    });
+}
+catch (Exception ex)
+{
+    Log.Warning(ex, "[Nucleus] Hangfire dashboard init failed — background jobs unavailable until next restart");
+}
 // app.MapHealthChecks("/health") intentionally removed — HealthController handles this
 // and always returns 200 so Railway healthcheck is not blocked by transient DB issues.
 app.MapFallbackToFile("index.html"); // SPA client-side routing fallback
