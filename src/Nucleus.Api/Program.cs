@@ -173,18 +173,19 @@ builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBeh
 builder.Services.AddValidatorsFromAssembly(typeof(Nucleus.Application.Behaviors.ValidationBehavior<,>).Assembly);
 
 // ── Hangfire ──────────────────────────────────────────────────────────────
-// Cap Hangfire's Npgsql pool at 5 — default (100) exhausts Supabase Micro's 200-connection limit
-// when multiple failed deploys leave zombie connections open.
-var hangfireConnStr = connectionString.Contains("MaxPoolSize", StringComparison.OrdinalIgnoreCase)
-    ? connectionString
-    : connectionString.TrimEnd(';') + ";MaxPoolSize=5;Connection Idle Lifetime=30";
-
-builder.Services.AddHangfire(cfg => cfg
-    .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
-    .UseSimpleAssemblyNameTypeSerializer()
-    .UseRecommendedSerializerSettings()
-    .UsePostgreSqlStorage(opts => opts.UseNpgsqlConnection(hangfireConnStr)));
-builder.Services.AddHangfireServer();
+// TEMPORARILY DISABLED (2026-07-10): Repeated Railway redeploys exhausted Postgres
+// max_connections (200). Hangfire eagerly opens a connection at startup and crashes
+// the entire app when EMAXCONN is returned. Re-enable once connections have drained
+// and the connection pooling / Supavisor strategy is confirmed.
+// TODO: Switch Hangfire to use Supabase Supavisor (Transaction pooler, port 6543)
+// so it never holds persistent connections.
+//
+// builder.Services.AddHangfire(cfg => cfg
+//     .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+//     .UseSimpleAssemblyNameTypeSerializer()
+//     .UseRecommendedSerializerSettings()
+//     .UsePostgreSqlStorage(opts => opts.UseNpgsqlConnection(connectionString)));
+// builder.Services.AddHangfireServer();
 builder.Services.AddScoped<IBackgroundJobService, HangfireBackgroundJobService>();
 builder.Services.AddScoped<BrandProvisioningJob>();
 builder.Services.AddScoped<GhlContactSyncJob>();
@@ -327,19 +328,11 @@ app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Nucleus v1"
 
 app.MapControllers();
 app.MapHub<ProvisioningHub>("/hubs/provisioning");
-// Hangfire dashboard — wrapped so a DB connection failure at startup doesn't crash the whole app.
-// If Hangfire storage can't connect (e.g. EMAXCONN), the API still starts and serves /health.
-try
-{
-    app.MapHangfireDashboard("/hangfire", new DashboardOptions
-    {
-        Authorization = [new HangfireAuthFilter(app.Configuration)],
-    });
-}
-catch (Exception ex)
-{
-    Log.Warning(ex, "[Nucleus] Hangfire dashboard init failed — background jobs unavailable until next restart");
-}
+// Hangfire dashboard — TEMPORARILY DISABLED (see AddHangfire comment above).
+// app.MapHangfireDashboard("/hangfire", new DashboardOptions
+// {
+//     Authorization = [new HangfireAuthFilter(app.Configuration)],
+// });
 // app.MapHealthChecks("/health") intentionally removed — HealthController handles this
 // and always returns 200 so Railway healthcheck is not blocked by transient DB issues.
 app.MapFallbackToFile("index.html"); // SPA client-side routing fallback
@@ -393,11 +386,12 @@ _ = Task.Run(async () =>
 });
 
 // Register nightly Hangfire recurring jobs
-RecurringJob.AddOrUpdate<KeywordRankJob>(
-    "keyword-ranks-nightly",
-    job => job.CheckAllBrandsAsync(CancellationToken.None),
-    Cron.Daily(3), // 3 AM UTC
-    new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+// TEMPORARILY DISABLED — Hangfire registration is commented out above; re-enable both together.
+// RecurringJob.AddOrUpdate<KeywordRankJob>(
+//     "keyword-ranks-nightly",
+//     job => job.CheckAllBrandsAsync(CancellationToken.None),
+//     Cron.Daily(3), // 3 AM UTC
+//     new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
 app.Run();
 
