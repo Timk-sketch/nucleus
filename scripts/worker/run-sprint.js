@@ -11,7 +11,7 @@
  *   NUCLEUS_PROD_URL           — e.g. https://nucleus-production.up.railway.app (default)
  *
  * Optional:
- *   MAX_BUILD_FAIL_CYCLES=3    — Stop after N consecutive build failures (default: 3)
+ *   MAX_TURNS=50               — Max Claude agentic turns per sprint (default: 50)
  */
 
 import 'dotenv/config';
@@ -27,7 +27,7 @@ import { deploy } from './deployer.js';
 import { notify } from './notifier.js';
 
 const NUCLEUS_ROOT = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
-const MAX_FAIL_CYCLES = parseInt(process.env.MAX_BUILD_FAIL_CYCLES || '3', 10);
+const MAX_TURNS = parseInt(process.env.MAX_TURNS || '50', 10);
 
 const sprintNumber = parseInt(process.argv[2], 10);
 const dryRun = process.argv.includes('--dry-run');
@@ -86,9 +86,8 @@ async function runSprint(n) {
     return;
   }
 
-  // 4. Call Claude API — implement the sprint
-  log('Calling Claude API...');
-  let buildFailCycles = 0;
+  // 4. Call Claude API — agentic tool loop
+  log('Calling Claude API (agentic loop)...');
 
   try {
     const client = new Anthropic();
@@ -108,8 +107,9 @@ Critical rules:
 - Plan gates enforced via TenantPlanService
 - EF migrations: use "dotnet ef migrations add ${spec.migration}" from src/Nucleus.Api/
 - Run "dotnet build Nucleus.sln" after every batch of file writes to catch errors early
-- Fix all build errors before continuing
-- The sprint is complete when ALL acceptance_criteria pass
+- Fix ALL build errors before declaring done
+- Nullable reference types are enabled — use string? where nullable
+- The sprint is complete when ALL acceptance_criteria pass and dotnet build succeeds with 0 errors
 
 Work autonomously. Read existing files before writing to follow established patterns.
 Start with Domain entities, then EF config, then Application commands/queries, then Controllers, then Blazor pages.`;
@@ -127,31 +127,83 @@ Work through these in order:
 5. Implement MediatR Queries: ${spec.queries.join(', ')}
 6. Add thin API controller endpoints
 7. Build Blazor pages: ${spec.blazor_pages.join(', ')}
-8. Run dotnet build and dotnet test — fix all errors
-9. Confirm all acceptance_criteria are met
+8. Run dotnet build Nucleus.sln and fix ALL errors (0 errors required)
+9. Run dotnet test and fix any failures
+10. Confirm all acceptance_criteria are met
 
 Reference the SEO Hub port map above for business logic. Apply multi-tenancy to everything.`;
 
-    const stream = client.messages.stream({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 32000,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userMessage }],
-      tools: getTools(),
-    });
+    const messages = [{ role: 'user', content: userMessage }];
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    let turn = 0;
 
-    for await (const event of stream) {
-      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-        process.stdout.write(event.delta.text);
+    while (turn < MAX_TURNS) {
+      turn++;
+      log(`Claude turn ${turn}/${MAX_TURNS}...`);
+
+      const response = await client.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 32000,
+        system: systemPrompt,
+        messages,
+        tools: getTools(),
+      });
+
+      totalInputTokens += response.usage.input_tokens;
+      totalOutputTokens += response.usage.output_tokens;
+
+      // Print any text Claude produces
+      for (const block of response.content) {
+        if (block.type === 'text' && block.text) {
+          process.stdout.write(block.text);
+        }
       }
-      if (event.type === 'content_block_start' && event.content_block?.type === 'tool_use') {
-        log(`Tool call: ${event.content_block.name}`);
+
+      // Append assistant turn to message history
+      messages.push({ role: 'assistant', content: response.content });
+
+      if (response.stop_reason === 'end_turn') {
+        log(`Claude finished after ${turn} turns. Total tokens: input=${totalInputTokens} output=${totalOutputTokens}`);
+        break;
       }
+
+      if (response.stop_reason === 'tool_use') {
+        const toolResults = [];
+
+        for (const block of response.content) {
+          if (block.type !== 'tool_use') continue;
+
+          const preview = JSON.stringify(block.input).substring(0, 120);
+          log(`Tool: ${block.name} — ${preview}`);
+
+          let result;
+          try {
+            result = executeTool(block.name, block.input, log);
+          } catch (err) {
+            result = `ERROR: ${err.message}`;
+            log(`Tool error (${block.name}): ${err.message}`);
+          }
+
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: block.id,
+            content: typeof result === 'string' ? result : JSON.stringify(result),
+          });
+        }
+
+        messages.push({ role: 'user', content: toolResults });
+        continue;
+      }
+
+      // max_tokens or unexpected stop
+      log(`Stop reason: ${response.stop_reason} — ending loop`);
+      break;
     }
 
-    const finalMessage = await stream.finalMessage();
-    log(`Claude finished. Stop reason: ${finalMessage.stop_reason}`);
-    log(`Tokens used: input=${finalMessage.usage.input_tokens} output=${finalMessage.usage.output_tokens}`);
+    if (turn >= MAX_TURNS) {
+      log(`WARNING: Reached MAX_TURNS (${MAX_TURNS}) — Claude may not have finished`);
+    }
 
   } catch (err) {
     log(`Claude API error: ${err.message}`);
@@ -164,14 +216,7 @@ Reference the SEO Hub port map above for business logic. Apply multi-tenancy to 
   try {
     await verify(n);
   } catch (err) {
-    buildFailCycles++;
-    log(`Verification failed (attempt ${buildFailCycles}/${MAX_FAIL_CYCLES}): ${err.message}`);
-    if (buildFailCycles >= MAX_FAIL_CYCLES) {
-      await notify('failed', { sprint: n, step: 'verify', error: `Failed ${MAX_FAIL_CYCLES} times: ${err.message}`, logPath });
-      markSprintStatus(n, 'failed');
-      process.exit(1);
-    }
-    // Could retry here — for now treat as fatal after first failure post-Claude
+    log(`Verification failed: ${err.message}`);
     await notify('failed', { sprint: n, step: 'verify', error: err.message, logPath });
     markSprintStatus(n, 'failed');
     process.exit(1);
@@ -213,6 +258,41 @@ Reference the SEO Hub port map above for business logic. Apply multi-tenancy to 
   }
 }
 
+function executeTool(name, input, log) {
+  switch (name) {
+    case 'read_file': {
+      const filePath = path.join(NUCLEUS_ROOT, input.path);
+      if (!fs.existsSync(filePath)) return `File not found: ${input.path}`;
+      return fs.readFileSync(filePath, 'utf8');
+    }
+
+    case 'write_file': {
+      const filePath = path.join(NUCLEUS_ROOT, input.path);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, input.content, 'utf8');
+      log(`Written: ${input.path} (${input.content.length} chars)`);
+      return `OK: ${input.path}`;
+    }
+
+    case 'bash': {
+      try {
+        const output = execSync(input.command, {
+          cwd: NUCLEUS_ROOT,
+          encoding: 'utf8',
+          stdio: 'pipe',
+          timeout: 180000, // 3 min per command
+        });
+        return output || '(no output)';
+      } catch (err) {
+        return `EXIT ${err.status || 1}:\nSTDOUT: ${err.stdout || ''}\nSTDERR: ${err.stderr || ''}`;
+      }
+    }
+
+    default:
+      return `Unknown tool: ${name}`;
+  }
+}
+
 function getTools() {
   return [
     {
@@ -221,7 +301,7 @@ function getTools() {
       input_schema: {
         type: 'object',
         properties: {
-          path: { type: 'string', description: 'Relative path from Nucleus root' },
+          path: { type: 'string', description: 'Relative path from Nucleus root (e.g. src/Nucleus.Domain/Entities/Content.cs)' },
         },
         required: ['path'],
       },
@@ -233,14 +313,14 @@ function getTools() {
         type: 'object',
         properties: {
           path: { type: 'string', description: 'Relative path from Nucleus root' },
-          content: { type: 'string', description: 'Full file content' },
+          content: { type: 'string', description: 'Full file content to write' },
         },
         required: ['path', 'content'],
       },
     },
     {
       name: 'bash',
-      description: 'Run a shell command in the Nucleus root directory (build, test, ef migrations)',
+      description: 'Run a shell command in the Nucleus root directory (dotnet build, dotnet test, dotnet ef migrations, etc.)',
       input_schema: {
         type: 'object',
         properties: {
@@ -251,10 +331,6 @@ function getTools() {
     },
   ];
 }
-
-// Tool execution (Claude's tool calls come back as tool_result — handled in stream above)
-// This is a simplified version; a full agentic loop would process tool_use events and feed results back
-// For full tool-use loop, extend the stream handler to accumulate tool calls and respond
 
 function createLogger(logPath) {
   fs.mkdirSync(path.dirname(logPath), { recursive: true });
