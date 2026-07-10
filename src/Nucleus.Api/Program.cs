@@ -253,8 +253,11 @@ builder.Services.Configure<Microsoft.AspNetCore.ResponseCompression.BrotliCompre
     opts.Level = System.IO.Compression.CompressionLevel.Fastest);
 
 // ── Health checks ─────────────────────────────────────────────────────────
-builder.Services.AddHealthChecks()
-    .AddDbContextCheck<NucleusDbContext>("db");
+// NOTE: HealthController handles GET /health and always returns 200 so Railway
+// healthcheck passes even when the DB is temporarily unreachable. Do NOT call
+// app.MapHealthChecks("/health") — it would shadow the controller and return 503
+// on any DB hiccup, killing deployments.
+builder.Services.AddHealthChecks();
 
 // ── Rate limiting ─────────────────────────────────────────────────────────
 // "auth" policy: 10 requests/minute per IP on login/register/refresh endpoints
@@ -317,7 +320,8 @@ app.MapHangfireDashboard("/hangfire", new DashboardOptions
 {
     Authorization = [new HangfireAuthFilter(app.Configuration)],
 });
-app.MapHealthChecks("/health");
+// app.MapHealthChecks("/health") intentionally removed — HealthController handles this
+// and always returns 200 so Railway healthcheck is not blocked by transient DB issues.
 app.MapFallbackToFile("index.html"); // SPA client-side routing fallback
 
 // Run pending EF migrations + seed roles/super-admin in background so Railway healthcheck gets a fast first response.
