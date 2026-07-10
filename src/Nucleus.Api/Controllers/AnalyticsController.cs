@@ -104,7 +104,7 @@ public class AnalyticsController(NucleusDbContext db) : ControllerBase
             .ToListAsync(ct);
 
         var activity = recentBrands
-            .Select(b => new { b.Type, Label = b.Name, Meta = b.Status, b.CreatedAt })
+            .Select(b => new { b.Type, Label = b.Name, Meta = (string?)b.Status, b.CreatedAt })
             .Concat(recentKeywords.Select(k => new { k.Type, Label = k.Keyword, Meta = (string?)"keyword", k.CreatedAt }))
             .OrderByDescending(a => a.CreatedAt)
             .Take(8)
