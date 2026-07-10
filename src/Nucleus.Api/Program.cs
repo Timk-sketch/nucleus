@@ -84,8 +84,13 @@ static string ConvertPostgresUri(string uri)
     return csb.ConnectionString;
 }
 
+// Cap EF Core pool at 10 to avoid exhausting Supabase Micro's 200-connection limit.
+var efConnStr = connectionString.Contains("MaxPoolSize", StringComparison.OrdinalIgnoreCase)
+    ? connectionString
+    : connectionString.TrimEnd(';') + ";MaxPoolSize=10;Connection Idle Lifetime=60";
+
 builder.Services.AddDbContext<NucleusDbContext>(opts =>
-    opts.UseNpgsql(connectionString));
+    opts.UseNpgsql(efConnStr));
 builder.Services.AddScoped<INucleusDbContext>(sp => sp.GetRequiredService<NucleusDbContext>());
 
 // ── ASP.NET Identity ──────────────────────────────────────────────────────
@@ -168,11 +173,17 @@ builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBeh
 builder.Services.AddValidatorsFromAssembly(typeof(Nucleus.Application.Behaviors.ValidationBehavior<,>).Assembly);
 
 // ── Hangfire ──────────────────────────────────────────────────────────────
+// Cap Hangfire's Npgsql pool at 5 — default (100) exhausts Supabase Micro's 200-connection limit
+// when multiple failed deploys leave zombie connections open.
+var hangfireConnStr = connectionString.Contains("MaxPoolSize", StringComparison.OrdinalIgnoreCase)
+    ? connectionString
+    : connectionString.TrimEnd(';') + ";MaxPoolSize=5;Connection Idle Lifetime=30";
+
 builder.Services.AddHangfire(cfg => cfg
     .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
     .UseSimpleAssemblyNameTypeSerializer()
     .UseRecommendedSerializerSettings()
-    .UsePostgreSqlStorage(opts => opts.UseNpgsqlConnection(connectionString)));
+    .UsePostgreSqlStorage(opts => opts.UseNpgsqlConnection(hangfireConnStr)));
 builder.Services.AddHangfireServer();
 builder.Services.AddScoped<IBackgroundJobService, HangfireBackgroundJobService>();
 builder.Services.AddScoped<BrandProvisioningJob>();
