@@ -41,7 +41,7 @@ export function markSprintStatus(sprintNumber, status) {
 }
 
 export function nextPendingSprint(currentNumber) {
-  for (let n = currentNumber + 1; n <= 28; n++) {
+  for (let n = currentNumber + 1; n <= 30; n++) {
     const filePath = path.join(SPRINTS_DIR, `sprint-${n}.yaml`);
     if (!fs.existsSync(filePath)) continue;
     const raw = fs.readFileSync(filePath, 'utf8');

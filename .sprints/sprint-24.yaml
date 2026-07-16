@@ -1,6 +1,6 @@
 sprint: 24
 name: Content Hub
-status: pending
+status: in_progress
 
 entities:
   - name: ContentPage

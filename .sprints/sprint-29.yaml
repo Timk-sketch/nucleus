@@ -1,0 +1,94 @@
+sprint: 29
+name: CMS Renderer Hub
+status: pending
+
+# Dependency: Sprint 28 (Studio Hub) must be complete.
+# Studio Hub = admin editor. CMS Renderer = public delivery layer.
+# This sprint replaces src/cms/ entirely — pages built in Studio Hub
+# are served by Nucleus to live visitors via custom domain routing.
+
+entities:
+  - name: SiteDomain
+    base: TenantEntity
+    fields: [hostname, brand_id, is_primary, ssl_verified, verified_at]
+    ef_config: true
+  - name: SiteDeployment
+    base: TenantEntity
+    fields: [brand_id, deployed_by, page_count, status, deployed_at, notes]
+    ef_config: true
+  - name: PageCache
+    base: TenantEntity
+    fields: [brand_id, slug, rendered_html, etag, cached_at, invalidated_at]
+    ef_config: true
+  - name: SiteVisit
+    base: TenantEntity
+    fields: [brand_id, slug, referrer, user_agent, ip_hash, visited_at]
+    ef_config: true
+
+migration: CmsRendererHub
+
+commands:
+  - DeploySiteCommand
+  - InvalidatePageCacheCommand
+  - MapCustomDomainCommand
+  - VerifyDomainCommand
+
+queries:
+  - GetPublicPageQuery
+  - GetSiteDeployStatusQuery
+  - GetSiteAnalyticsQuery
+  - GetCustomDomainQuery
+
+blazor_pages:
+  - Pages/Cms/Sites/Index.razor
+  - Pages/Cms/Domains/Index.razor
+  - Pages/Cms/Analytics/Index.razor
+
+port_map:
+  - seohub_file: src/cms/page-renderer.js
+    nucleus_target: Application/Cms/Queries/GetPublicPageQuery.cs
+    notes: >
+      Core renderer. Looks up WebsitePage by slug+brand_id, checks PageCache first,
+      returns rendered HTML. Cache hit path must be <5ms. On miss: render + store in PageCache.
+      Tenant-scoped: slug is unique per BrandId within TenantId.
+  - seohub_file: src/cms/router.js
+    nucleus_target: Api/Controllers/CmsController.cs
+    notes: >
+      Public-facing GET /{slug} endpoint. Resolve brand via SiteDomain.hostname
+      (from Host header). No auth required — this is public. Return 200 HTML or 404.
+      Controller must bypass [Authorize] for public page routes.
+  - seohub_file: src/cms/
+    nucleus_target: Application/Cms/Commands/DeploySiteCommand.cs
+    notes: >
+      Deploy = snapshot all published WebsitePages for a brand into PageCache.
+      Write SiteDeployment record. Notify via Hangfire background job for large sites.
+
+plan_gates:
+  starter:
+    - 1_custom_domain
+    - cms_analytics_basic
+    - manual_deploy
+  pro:
+    - 3_custom_domains
+    - auto_deploy_on_publish
+    - page_analytics
+    - cache_invalidation_api
+  agency:
+    - unlimited_domains
+    - cdn_purge_webhook
+    - site_analytics_export
+    - white_label_renderer
+
+acceptance_criteria:
+  - dotnet build Nucleus.sln succeeds (0 errors)
+  - dotnet test passes
+  - EF migration CmsRendererHub applies cleanly
+  - GET /cms/{slug} returns 200 HTML for a published WebsitePage (no auth required)
+  - GET /cms/{slug} returns 404 for unpublished or unknown slug
+  - PageCache row written after first render; second request served from cache
+  - POST /api/cms/deploy creates SiteDeployment + warms PageCache for all published pages
+  - POST /api/cms/cache/invalidate clears PageCache for specified slug
+  - SiteDomain.hostname lookup resolves correct BrandId from Host header
+  - /cms/sites Blazor page shows deploy history and status per brand
+  - /cms/domains Blazor page lists and verifies custom domains
+  - src/cms/ deletion from SEO Hub confirmed in retirement-checklist.md

@@ -1,0 +1,112 @@
+sprint: 30
+name: Finder Hub (Quiz Builder)
+status: pending
+
+# Ports the Service Finder / Quiz Builder from SEO Hub into Nucleus.
+# Currently lives at quiz.dirt-legal.com as a standalone embedded widget.
+# Nucleus version is multi-tenant: any brand can build product finders/quizzes.
+# Steps flow: question → answer → recommendation → DMVEz checkout or lead capture.
+
+entities:
+  - name: Finder
+    base: TenantEntity
+    fields: [name, brand_id, slug, intro_text, status, published_at, embed_token]
+    ef_config: true
+  - name: FinderStep
+    base: TenantEntity
+    fields: [finder_id, step_order, step_type, question_text, helper_text, is_required]
+    ef_config: true
+    # step_type: single_select | multi_select | text | plate_picker | zip_input
+  - name: FinderOption
+    base: TenantEntity
+    fields: [step_id, label, value, icon_url, description, sort_order]
+    ef_config: true
+  - name: FinderResult
+    base: TenantEntity
+    fields: [finder_id, condition_json, product_key, headline, body, cta_label, cta_url]
+    ef_config: true
+    # condition_json: {"step_slug": "vehicle_type", "value": "motorcycle"} — matches to result
+  - name: FinderSession
+    base: TenantEntity
+    fields: [finder_id, session_token, answers_json, result_key, converted, completed_at]
+    ef_config: true
+  - name: FinderAnalytics
+    base: TenantEntity
+    fields: [finder_id, date, starts, completions, conversions, drop_off_step_id]
+    ef_config: true
+
+migration: FinderHub
+
+commands:
+  - CreateFinderCommand
+  - PublishFinderCommand
+  - AddFinderStepCommand
+  - AddFinderOptionCommand
+  - AddFinderResultCommand
+  - RecordFinderSessionCommand
+  - RecordFinderConversionCommand
+
+queries:
+  - GetFinderBuilderQuery
+  - GetPublicFinderQuery
+  - GetFinderAnalyticsQuery
+  - GetFinderSessionQuery
+
+blazor_pages:
+  - Pages/Finder/Index.razor
+  - Pages/Finder/Builder/Index.razor
+  - Pages/Finder/Builder/Steps.razor
+  - Pages/Finder/Builder/Results.razor
+  - Pages/Finder/Analytics/Index.razor
+  - Pages/Finder/Preview/Index.razor
+
+port_map:
+  - seohub_file: src/query-interface/public/standalone-finder.html
+    nucleus_target: Application/Finder/Queries/GetPublicFinderQuery.cs
+    notes: >
+      Public GET /api/finder/{embed_token} returns full finder config (steps + options + results).
+      No auth — used by the embeddable widget. Returns JSON consumed by the Blazor embed component
+      or vanilla JS snippet for external embedding on SLH, HMR, dirtlegal.com, etc.
+  - seohub_file: src/query-interface/routes/finder-builder.js
+    nucleus_target: Application/Finder/Commands/CreateFinderCommand.cs
+    notes: >
+      Finder Builder admin route. Port DB-backed config pattern (already in Supabase
+      finder2_configs table in SEO Hub). Map existing config shape to FinderStep + FinderOption.
+  - seohub_file: src/services/service-finder-session.js
+    nucleus_target: Application/Finder/Commands/RecordFinderSessionCommand.cs
+    notes: >
+      Session tracking: POST /api/finder/{embed_token}/session creates FinderSession,
+      stores answers_json as user progresses. On complete: POST /api/finder/{embed_token}/convert
+      marks converted=true, fires GHL lead capture via background Hangfire job.
+
+plan_gates:
+  starter:
+    - 1_finder
+    - basic_analytics
+    - lead_capture
+  pro:
+    - 5_finders
+    - dmvez_checkout_integration
+    - plate_picker_step
+    - conversion_tracking
+  agency:
+    - unlimited_finders
+    - white_label_embed
+    - a_b_testing
+    - analytics_export
+    - custom_result_conditions
+
+acceptance_criteria:
+  - dotnet build Nucleus.sln succeeds (0 errors)
+  - dotnet test passes
+  - EF migration FinderHub applies cleanly
+  - POST /api/finder creates Finder scoped to TenantId+BrandId
+  - GET /api/finder/{embed_token} returns full config (unauthenticated)
+  - POST /api/finder/{embed_token}/session creates FinderSession with answers_json
+  - POST /api/finder/{embed_token}/convert marks session converted=true
+  - FinderResult condition matching logic returns correct product_key for given answers
+  - /finder Blazor page lists all finders for brand
+  - /finder/builder Blazor page creates steps and options via drag-drop
+  - /finder/preview Blazor page shows live finder preview
+  - Embed snippet (JS) loads finder on external HTML page via embed_token
+  - Analytics: starts/completions/conversions tracked per finder per day
