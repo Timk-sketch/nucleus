@@ -27,7 +27,7 @@ import { deploy } from './deployer.js';
 import { notify } from './notifier.js';
 
 const NUCLEUS_ROOT = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
-const MAX_TURNS = parseInt(process.env.MAX_TURNS || '50', 10);
+const MAX_TURNS = parseInt(process.env.MAX_TURNS || '100', 10);
 
 const sprintNumber = parseInt(process.argv[2], 10);
 const dryRun = process.argv.includes('--dry-run');
@@ -110,9 +110,13 @@ Critical rules:
 - Fix ALL build errors before declaring done
 - Nullable reference types are enabled — use string? where nullable
 - The sprint is complete when ALL acceptance_criteria pass and dotnet build succeeds with 0 errors
+- CRITICAL: Always define every interface you reference (IAiContentService, etc.) before using it
+- CRITICAL: Every file in Nucleus.Application that uses INucleusDbContext must have "using Nucleus.Application.Common.Interfaces;" at the top
+- CRITICAL: Do NOT stop mid-implementation. Always finish with a final "dotnet build Nucleus.sln" that shows 0 errors before ending
 
 Work autonomously. Read existing files before writing to follow established patterns.
-Start with Domain entities, then EF config, then Application commands/queries, then Controllers, then Blazor pages.`;
+Start with Domain entities, then EF config, then Application commands/queries, then Controllers, then Blazor pages.
+Finish with a full dotnet build pass and fix ALL errors. Only declare done when build succeeds with 0 errors.`;
 
     const userMessage = `${context}
 
