@@ -1,0 +1,265 @@
+@page "/search/rankings"
+@attribute [Authorize]
+@layout SearchLayout
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>Rankings — Search Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Rankings Dashboard</h1>
+        <p class="page-subtitle">Live keyword position tracking across your brands.</p>
+    </div>
+</div>
+
+<!-- Brand selector -->
+@if (_brands.Count == 0 && !_loading)
+{
+    <div class="empty-state">
+        No brands yet. <a href="/brands">Add a brand</a> to start tracking rankings.
+    </div>
+}
+else
+{
+    <div class="brand-pill-row">
+        @foreach (var b in _brands)
+        {
+            <button class="brand-pill-btn @(_selectedBrand?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                    @onclick="() => SelectBrand(b)">
+                <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+                @b.Name
+            </button>
+        }
+    </div>
+}
+
+@if (_selectedBrand != null)
+{
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;gap:12px;flex-wrap:wrap;">
+        <div style="display:flex;gap:16px;flex-wrap:wrap;">
+            <div class="stat-card stat-card--sm">
+                <div class="stat-label">Total Keywords</div>
+                <div class="stat-value">@(_dashboard?.TotalKeywords ?? 0)</div>
+            </div>
+            <div class="stat-card stat-card--sm">
+                <div class="stat-label">Ranking</div>
+                <div class="stat-value" style="color:var(--hub-color)">@(_dashboard?.RankingKeywords ?? 0)</div>
+            </div>
+            <div class="stat-card stat-card--sm">
+                <div class="stat-label">Top 3</div>
+                <div class="stat-value">@(_dashboard?.Top3Keywords ?? 0)</div>
+            </div>
+            <div class="stat-card stat-card--sm">
+                <div class="stat-label">Top 10</div>
+                <div class="stat-value">@(_dashboard?.Top10Keywords ?? 0)</div>
+            </div>
+        </div>
+        <button class="btn-hub" @onclick="TriggerRankCheck" disabled="@_checkingRanks">
+            @if (_checkingRanks)
+            {
+                <span>Queued…</span>
+            }
+            else
+            {
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                <span>Check ranks now</span>
+            }
+        </button>
+    </div>
+
+    @if (_error != null)
+    {
+        <div class="alert-error">@_error</div>
+    }
+    @if (_successMsg != null)
+    {
+        <div class="alert-success">@_successMsg</div>
+    }
+
+    @if (_loading)
+    {
+        <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+    }
+    else if (_dashboard?.Keywords.Count == 0)
+    {
+        <div class="empty-state">
+            No keywords tracked for this brand.
+            <a href="/content">Add keywords in the Content Hub →</a>
+        </div>
+    }
+    else
+    {
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Keyword</th>
+                        <th>Position</th>
+                        <th>Change</th>
+                        <th>Ranked URL</th>
+                        <th>Vol</th>
+                        <th>Last Checked</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var kw in _dashboard!.Keywords)
+                    {
+                        <tr>
+                            <td style="font-weight:600;">@kw.Keyword</td>
+                            <td>
+                                @if (kw.CurrentPosition.HasValue)
+                                {
+                                    <span class="rank-badge rank-badge--@RankClass(kw.CurrentPosition.Value)">#@kw.CurrentPosition</span>
+                                }
+                                else
+                                {
+                                    <span style="color:var(--color-muted);">—</span>
+                                }
+                            </td>
+                            <td>
+                                @if (kw.PositionDelta.HasValue && kw.PositionDelta.Value != 0)
+                                {
+                                    <span class="rank-delta @(kw.PositionDelta > 0 ? "rank-delta--up" : "rank-delta--down")">
+                                        @(kw.PositionDelta > 0 ? "▲" : "▼")@Math.Abs(kw.PositionDelta.Value)
+                                    </span>
+                                }
+                                else { <span>—</span> }
+                            </td>
+                            <td style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                @if (!string.IsNullOrEmpty(kw.RankedUrl))
+                                {
+                                    <a href="@kw.RankedUrl" target="_blank" rel="noopener"
+                                       style="color:var(--hub-color);" title="@kw.RankedUrl">
+                                        @TruncateUrl(kw.RankedUrl)
+                                    </a>
+                                }
+                                else { <span style="color:var(--color-muted);">—</span> }
+                            </td>
+                            <td style="font-size:13px;color:var(--color-muted);">
+                                @(kw.SearchVolume.HasValue ? FormatVolume(kw.SearchVolume.Value) : "—")
+                            </td>
+                            <td style="font-size:12px;color:var(--color-muted);">
+                                @(kw.LastChecked.HasValue ? kw.LastChecked.Value.ToString("MMM d") : "Never")
+                            </td>
+                            <td>
+                                <a href="/search/history?keywordId=@kw.KeywordId"
+                                   style="font-size:12px;color:var(--hub-color);">History →</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private DashboardData? _dashboard;
+    private bool _loading, _checkingRanks;
+    private string? _error, _successMsg;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count > 0)
+            await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _error = _successMsg = null;
+        await LoadDashboard();
+    }
+
+    private async Task LoadDashboard()
+    {
+        if (_selectedBrand is null) return;
+        _loading = true;
+        _dashboard = null;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<DashboardData>>(
+                $"api/search/rankings?brandId={_selectedBrand.Id}");
+            _dashboard = resp?.Data;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task TriggerRankCheck()
+    {
+        if (_selectedBrand is null) return;
+        _checkingRanks = true;
+        _error = _successMsg = null;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("api/search/rankings/check",
+                new { BrandId = _selectedBrand.Id });
+            if (resp.IsSuccessStatusCode)
+            {
+                _successMsg = "Rank check queued. Results will appear within a few minutes.";
+                await Task.Delay(2000);
+                await LoadDashboard();
+            }
+            else
+                _error = "Failed to queue rank check.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _checkingRanks = false; }
+    }
+
+    private static string RankClass(int pos) => pos switch
+    {
+        <= 3 => "top3",
+        <= 10 => "top10",
+        <= 30 => "top30",
+        _ => "other",
+    };
+
+    private static string TruncateUrl(string url)
+    {
+        if (url.Length <= 40) return url;
+        try { var uri = new Uri(url); return uri.Host + (uri.AbsolutePath.Length > 20 ? uri.AbsolutePath[..20] + "…" : uri.AbsolutePath); }
+        catch { return url[..37] + "…"; }
+    }
+
+    private static string FormatVolume(int vol) => vol switch
+    {
+        >= 1000000 => $"{vol / 1000000}M",
+        >= 1000 => $"{vol / 1000}k",
+        _ => vol.ToString(),
+    };
+
+    // DTOs
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; public string PrimaryColor { get; set; } = "#6366f1"; }
+    private class DashboardData
+    {
+        public Guid BrandId { get; set; }
+        public string BrandName { get; set; } = "";
+        public int TotalKeywords { get; set; }
+        public int RankingKeywords { get; set; }
+        public int Top3Keywords { get; set; }
+        public int Top10Keywords { get; set; }
+        public int Top30Keywords { get; set; }
+        public List<KeywordRow> Keywords { get; set; } = [];
+    }
+    private class KeywordRow
+    {
+        public Guid KeywordId { get; set; }
+        public string Keyword { get; set; } = "";
+        public string? TargetUrl { get; set; }
+        public int? CurrentPosition { get; set; }
+        public int? PreviousPosition { get; set; }
+        public int? PositionDelta { get; set; }
+        public string? RankedUrl { get; set; }
+        public int? SearchVolume { get; set; }
+        public DateTimeOffset? LastChecked { get; set; }
+    }
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

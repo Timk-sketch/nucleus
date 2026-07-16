@@ -1,0 +1,231 @@
+@page "/search/clusters"
+@attribute [Authorize]
+@layout SearchLayout
+@inject HttpClient Http
+
+<PageTitle>Topic Clusters — Search Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Topic Clusters</h1>
+        <p class="page-subtitle">Group keywords by topic to build topical authority and strategic content plans.</p>
+    </div>
+</div>
+
+<!-- Brand selector -->
+@if (_brands.Count == 0 && !_brandsLoading)
+{
+    <div class="empty-state">No brands yet. <a href="/brands">Add a brand</a> to get started.</div>
+}
+else
+{
+    <div class="brand-pill-row">
+        @foreach (var b in _brands)
+        {
+            <button class="brand-pill-btn @(_selectedBrand?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                    @onclick="() => SelectBrand(b)">
+                <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+                @b.Name
+            </button>
+        }
+    </div>
+}
+
+@if (_selectedBrand != null)
+{
+    <!-- Create cluster form -->
+    @if (_showForm)
+    {
+        <div class="card" style="padding:24px;margin-bottom:24px;max-width:640px;">
+            <h3 style="font-size:14px;font-weight:700;margin:0 0 16px;">New Topic Cluster</h3>
+
+            @if (_createError != null)   { <div class="alert-error">@_createError</div> }
+            @if (_createSuccess != null) { <div class="alert-success">@_createSuccess</div> }
+
+            <div class="form-group">
+                <label>CLUSTER NAME</label>
+                <input class="form-input" @bind="_newName" placeholder="e.g. Vehicle Registration Montana" />
+            </div>
+            <div class="form-group">
+                <label>PILLAR KEYWORD</label>
+                <input class="form-input" @bind="_newPillar" placeholder="e.g. montana vehicle registration" />
+            </div>
+            <div class="form-group">
+                <label>CLUSTER KEYWORDS <span class="label-hint">(one per line, max 50)</span></label>
+                <textarea class="form-input" @bind="_newClusterKeywords" rows="5"
+                          placeholder="register vehicle montana&#10;how to register a car in montana&#10;montana dmv registration"></textarea>
+            </div>
+            <div class="form-group">
+                <label>NOTES <span class="label-hint">(optional)</span></label>
+                <textarea class="form-input" @bind="_newNotes" rows="2" placeholder="Strategy notes…"></textarea>
+            </div>
+            <div style="display:flex;gap:12px;margin-top:8px;">
+                <button class="btn-hub" @onclick="CreateCluster" disabled="@_creating">
+                    @(_creating ? "Creating…" : "Create Cluster")
+                </button>
+                <button class="btn-secondary" @onclick="() => _showForm = false">Cancel</button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div style="margin-bottom:20px;">
+            <button class="btn-hub" @onclick="() => { _showForm = true; _createError = _createSuccess = null; }">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                New Cluster
+            </button>
+        </div>
+    }
+
+    <!-- Clusters list -->
+    @if (_clustersLoading)
+    {
+        <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+    }
+    else if (_clusters.Count == 0)
+    {
+        <div class="empty-state">No topic clusters yet. Create your first one above.</div>
+    }
+    else
+    {
+        <div style="display:grid;gap:16px;">
+            @foreach (var cluster in _clusters)
+            {
+                <div class="card" style="padding:20px;">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px;">
+                        <div>
+                            <div style="font-weight:700;font-size:16px;">@cluster.Name</div>
+                            <div style="font-size:13px;color:var(--color-muted);margin-top:2px;">
+                                Pillar: <strong style="color:var(--hub-color);">@cluster.PillarKeyword</strong>
+                            </div>
+                        </div>
+                        <span class="badge badge--@StatusClass(cluster.Status)">@cluster.Status</span>
+                    </div>
+
+                    @if (cluster.ClusterKeywords.Count > 0)
+                    {
+                        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
+                            @foreach (var kw in cluster.ClusterKeywords.Take(10))
+                            {
+                                <span style="padding:3px 10px;background:color-mix(in srgb, var(--hub-color) 10%, transparent);color:var(--hub-color);border-radius:999px;font-size:12px;font-weight:600;">
+                                    @kw
+                                </span>
+                            }
+                            @if (cluster.ClusterKeywords.Count > 10)
+                            {
+                                <span style="padding:3px 10px;background:rgba(0,0,0,0.05);color:var(--color-muted);border-radius:999px;font-size:12px;">
+                                    +@(cluster.ClusterKeywords.Count - 10) more
+                                </span>
+                            }
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(cluster.Notes))
+                    {
+                        <div style="font-size:13px;color:var(--color-muted);font-style:italic;">@cluster.Notes</div>
+                    }
+
+                    <div style="font-size:11px;color:var(--color-muted);margin-top:8px;">
+                        @cluster.ClusterKeywords.Count keywords · Created @cluster.CreatedAt.ToString("MMM d, yyyy")
+                    </div>
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private List<ClusterItem> _clusters = [];
+    private bool _brandsLoading = true, _clustersLoading, _creating, _showForm;
+    private string _newName = "", _newPillar = "", _newClusterKeywords = "", _newNotes = "";
+    private string? _createError, _createSuccess;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        _brandsLoading = false;
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _createError = _createSuccess = null;
+        _showForm = false;
+        await LoadClusters();
+    }
+
+    private async Task LoadClusters()
+    {
+        if (_selectedBrand is null) return;
+        _clustersLoading = true;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<List<ClusterItem>>>(
+                $"api/search/clusters?brandId={_selectedBrand.Id}");
+            _clusters = resp?.Data ?? [];
+        }
+        finally { _clustersLoading = false; }
+    }
+
+    private async Task CreateCluster()
+    {
+        _createError = _createSuccess = null;
+        if (string.IsNullOrWhiteSpace(_newName)) { _createError = "Name is required."; return; }
+        if (string.IsNullOrWhiteSpace(_newPillar)) { _createError = "Pillar keyword is required."; return; }
+
+        var clusterKws = _newClusterKeywords
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(k => !string.IsNullOrEmpty(k))
+            .Take(50)
+            .ToList();
+
+        _creating = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("api/search/clusters", new
+            {
+                BrandId = _selectedBrand!.Id,
+                Name = _newName.Trim(),
+                PillarKeyword = _newPillar.Trim(),
+                ClusterKeywords = clusterKws,
+                Notes = string.IsNullOrWhiteSpace(_newNotes) ? null : _newNotes.Trim(),
+            });
+            if (resp.IsSuccessStatusCode)
+            {
+                _createSuccess = "Cluster created.";
+                _newName = _newPillar = _newClusterKeywords = _newNotes = "";
+                _showForm = false;
+                await LoadClusters();
+            }
+            else
+                _createError = "Failed to create cluster.";
+        }
+        catch (Exception ex) { _createError = ex.Message; }
+        finally { _creating = false; }
+    }
+
+    private static string StatusClass(string status) => status switch
+    {
+        "in_progress" => "amber",
+        "complete" => "green",
+        _ => "gray",
+    };
+
+    // DTOs
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; public string PrimaryColor { get; set; } = "#6366f1"; }
+    private class ClusterItem
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string PillarKeyword { get; set; } = "";
+        public List<string> ClusterKeywords { get; set; } = [];
+        public string Status { get; set; } = "planning";
+        public string? Notes { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+    }
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

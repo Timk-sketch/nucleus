@@ -1,0 +1,247 @@
+@page "/search/alerts"
+@attribute [Authorize]
+@layout SearchLayout
+@inject HttpClient Http
+
+<PageTitle>Keyword Alerts — Search Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Keyword Alerts</h1>
+        <p class="page-subtitle">Get notified when rankings cross critical thresholds.</p>
+    </div>
+</div>
+
+<!-- Brand selector -->
+@if (_brands.Count == 0 && !_brandsLoading)
+{
+    <div class="empty-state">No brands yet. <a href="/brands">Add a brand</a> to get started.</div>
+}
+else
+{
+    <div class="brand-pill-row">
+        @foreach (var b in _brands)
+        {
+            <button class="brand-pill-btn @(_selectedBrand?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                    @onclick="() => SelectBrand(b)">
+                <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+                @b.Name
+            </button>
+        }
+    </div>
+}
+
+@if (_selectedBrand != null)
+{
+    <!-- Create alert form -->
+    <div class="card" style="padding:24px;margin-bottom:24px;max-width:640px;">
+        <h3 style="font-size:14px;font-weight:700;margin:0 0 16px;">Create Alert</h3>
+
+        @if (_createError != null)  { <div class="alert-error">@_createError</div> }
+        @if (_createSuccess != null){ <div class="alert-success">@_createSuccess</div> }
+
+        <div class="form-row">
+            <div class="form-group" style="flex:2;">
+                <label>KEYWORD</label>
+                <select class="form-input" @bind="_newKeywordId">
+                    <option value="">— select keyword —</option>
+                    @foreach (var kw in _keywords)
+                    {
+                        <option value="@kw.Id">@kw.Keyword</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group" style="flex:2;">
+                <label>ALERT TYPE</label>
+                <select class="form-input" @bind="_newAlertType">
+                    <option value="rank_drop">Rank Drop</option>
+                    <option value="rank_rise">Rank Rise</option>
+                    <option value="out_of_top_10">Out of Top 10</option>
+                    <option value="entered_top_3">Entered Top 3</option>
+                </select>
+            </div>
+            <div class="form-group" style="flex:1;">
+                <label>THRESHOLD</label>
+                <input class="form-input" type="number" @bind="_newThreshold" min="1" max="200" placeholder="20" />
+            </div>
+        </div>
+        <button class="btn-hub" @onclick="CreateAlert" disabled="@_creating">
+            @(_creating ? "Creating…" : "Create Alert")
+        </button>
+    </div>
+
+    <!-- Alerts list -->
+    @if (_alertsLoading)
+    {
+        <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+    }
+    else if (_alerts.Count == 0)
+    {
+        <div class="empty-state">No alerts configured yet. Create one above.</div>
+    }
+    else
+    {
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Keyword</th>
+                        <th>Type</th>
+                        <th>Threshold</th>
+                        <th>Status</th>
+                        <th>Last Triggered</th>
+                        <th>Message</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var alert in _alerts)
+                    {
+                        <tr>
+                            <td style="font-weight:600;">@alert.Keyword</td>
+                            <td><span class="badge badge--@AlertTypeClass(alert.AlertType)">@FormatAlertType(alert.AlertType)</span></td>
+                            <td style="font-size:13px;">#@alert.Threshold</td>
+                            <td>
+                                <span class="badge @(alert.IsActive ? "badge--green" : "badge--gray")">
+                                    @(alert.IsActive ? "Active" : "Dismissed")
+                                </span>
+                            </td>
+                            <td style="font-size:12px;color:var(--color-muted);">
+                                @(alert.TriggeredAt.HasValue ? alert.TriggeredAt.Value.ToString("MMM d, HH:mm") : "Never")
+                            </td>
+                            <td style="font-size:12px;color:var(--color-muted);max-width:200px;">
+                                @(alert.Message ?? "—")
+                            </td>
+                            <td>
+                                @if (alert.IsActive)
+                                {
+                                    <button @onclick="() => DismissAlert(alert)"
+                                            style="font-size:12px;color:#ef4444;background:none;border:none;cursor:pointer;padding:4px 8px;">
+                                        Dismiss
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private List<KeywordItem> _keywords = [];
+    private List<AlertItem> _alerts = [];
+    private bool _brandsLoading = true, _alertsLoading, _creating;
+    private string _newKeywordId = "", _newAlertType = "rank_drop";
+    private int _newThreshold = 20;
+    private string? _createError, _createSuccess;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        _brandsLoading = false;
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _createError = _createSuccess = null;
+        await Task.WhenAll(LoadKeywords(), LoadAlerts());
+    }
+
+    private async Task LoadKeywords()
+    {
+        if (_selectedBrand is null) return;
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<KeywordItem>>>(
+            $"api/v1/brands/{_selectedBrand.Id}/keywords");
+        _keywords = resp?.Data ?? [];
+    }
+
+    private async Task LoadAlerts()
+    {
+        if (_selectedBrand is null) return;
+        _alertsLoading = true;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<List<AlertItem>>>(
+                $"api/search/alerts?brandId={_selectedBrand.Id}");
+            _alerts = resp?.Data ?? [];
+        }
+        finally { _alertsLoading = false; }
+    }
+
+    private async Task CreateAlert()
+    {
+        _createError = _createSuccess = null;
+        if (!Guid.TryParse(_newKeywordId, out var kwId)) { _createError = "Please select a keyword."; return; }
+        if (_newThreshold < 1 || _newThreshold > 200) { _createError = "Threshold must be 1–200."; return; }
+
+        _creating = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("api/search/alerts", new
+            {
+                BrandId = _selectedBrand!.Id,
+                KeywordId = kwId,
+                AlertType = _newAlertType,
+                Threshold = _newThreshold,
+            });
+            if (resp.IsSuccessStatusCode)
+            {
+                _createSuccess = "Alert created.";
+                _newKeywordId = "";
+                await LoadAlerts();
+            }
+            else
+                _createError = "Failed to create alert.";
+        }
+        catch (Exception ex) { _createError = ex.Message; }
+        finally { _creating = false; }
+    }
+
+    private async Task DismissAlert(AlertItem alert)
+    {
+        var resp = await Http.DeleteAsync($"api/search/alerts/{alert.Id}");
+        if (resp.IsSuccessStatusCode) await LoadAlerts();
+    }
+
+    private static string AlertTypeClass(string type) => type switch
+    {
+        "rank_drop" => "red",
+        "rank_rise" => "green",
+        "out_of_top_10" => "amber",
+        "entered_top_3" => "purple",
+        _ => "gray",
+    };
+
+    private static string FormatAlertType(string type) => type switch
+    {
+        "rank_drop" => "Rank Drop",
+        "rank_rise" => "Rank Rise",
+        "out_of_top_10" => "Out of Top 10",
+        "entered_top_3" => "Entered Top 3",
+        _ => type,
+    };
+
+    // DTOs
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; public string PrimaryColor { get; set; } = "#6366f1"; }
+    private class KeywordItem { public Guid Id { get; set; } public string Keyword { get; set; } = ""; }
+    private class AlertItem
+    {
+        public Guid Id { get; set; }
+        public Guid KeywordId { get; set; }
+        public string Keyword { get; set; } = "";
+        public string AlertType { get; set; } = "";
+        public int Threshold { get; set; }
+        public bool IsActive { get; set; }
+        public string? Message { get; set; }
+        public DateTimeOffset? TriggeredAt { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+    }
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

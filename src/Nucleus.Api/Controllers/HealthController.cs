@@ -7,7 +7,7 @@ namespace Nucleus.Api.Controllers;
 
 [ApiController]
 [Route("health")]
-public class HealthController(NucleusDbContext db) : ControllerBase
+public class HealthController(NucleusDbContext db, IConfiguration config) : ControllerBase
 {
     [HttpGet]
     [AllowAnonymous]
@@ -20,9 +20,15 @@ public class HealthController(NucleusDbContext db) : ControllerBase
             // ExecuteSqlRawAsync(..., cancelToken) cancels command execution but NOT
             // pool slot waiting — under EMAXCONN all 10 slots are busy and the check
             // hangs until Railway times out the healthcheck. A direct connection with
-            // ConnectionTimeout=3 fails fast at the TCP/auth layer instead.
-            var baseConnStr = db.Database.GetConnectionString() ?? "";
-            var csb = new NpgsqlConnectionStringBuilder(baseConnStr) { ConnectionTimeout = 3 };
+            // Timeout=3 fails fast at the TCP/auth layer instead.
+            var rawConn = config.GetConnectionString("DefaultConnection")
+                ?? config["NUCLEUS_DB_CONNECTION"]
+                ?? config["DATABASE_URL"]
+                ?? "";
+            var csb = new NpgsqlConnectionStringBuilder(rawConn)
+            {
+                Timeout = 3, // Npgsql 9: connection timeout in seconds
+            };
             using var conn = new NpgsqlConnection(csb.ConnectionString);
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
             await conn.OpenAsync(cts.Token);

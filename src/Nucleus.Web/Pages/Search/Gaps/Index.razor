@@ -1,0 +1,201 @@
+@page "/search/gaps"
+@attribute [Authorize]
+@layout SearchLayout
+@inject HttpClient Http
+
+<PageTitle>Content Gaps — Search Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Content Gaps</h1>
+        <p class="page-subtitle">Keywords you're ranking for but haven't written dedicated content for yet.</p>
+    </div>
+</div>
+
+<!-- Brand selector -->
+@if (_brands.Count == 0 && !_brandsLoading)
+{
+    <div class="empty-state">No brands yet. <a href="/brands">Add a brand</a> to get started.</div>
+}
+else
+{
+    <div class="brand-pill-row">
+        @foreach (var b in _brands)
+        {
+            <button class="brand-pill-btn @(_selectedBrand?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                    @onclick="() => SelectBrand(b)">
+                <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+                @b.Name
+            </button>
+        }
+    </div>
+}
+
+@if (_selectedBrand != null)
+{
+    <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:center;">
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Total Ranking</div>
+            <div class="stat-value">@_gaps.Count</div>
+        </div>
+        <div class="stat-card stat-card--sm" style="border-color:#ef4444;">
+            <div class="stat-label">Missing Content</div>
+            <div class="stat-value" style="color:#ef4444;">@_gaps.Count(g => !g.HasDedicatedContent)</div>
+        </div>
+        <div class="stat-card stat-card--sm" style="border-color:#10b981;">
+            <div class="stat-label">Has Content</div>
+            <div class="stat-value" style="color:#10b981;">@_gaps.Count(g => g.HasDedicatedContent)</div>
+        </div>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+    }
+    else if (_gaps.Count == 0)
+    {
+        <div class="empty-state">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--hub-color)" stroke-width="1.5" style="margin-bottom:12px;opacity:0.5;">
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <div>No ranking data yet. <a href="/search/rankings">Check ranks first →</a></div>
+        </div>
+    }
+    else
+    {
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Keyword</th>
+                        <th>Position</th>
+                        <th>Search Volume</th>
+                        <th>Currently Ranks On</th>
+                        <th>Content Status</th>
+                        <th>Target URL</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var gap in _gaps)
+                    {
+                        <tr class="@(!gap.HasDedicatedContent ? "row--highlight-red" : "")">
+                            <td style="font-weight:600;">@gap.Keyword</td>
+                            <td>
+                                <span class="rank-badge rank-badge--@RankClass(gap.CurrentPosition)">#@(gap.CurrentPosition?.ToString() ?? "—")</span>
+                            </td>
+                            <td style="font-size:13px;color:var(--color-muted);">
+                                @(gap.SearchVolume.HasValue ? FormatVolume(gap.SearchVolume.Value) : "—")
+                            </td>
+                            <td style="font-size:12px;">
+                                @if (!string.IsNullOrEmpty(gap.RankedUrl))
+                                {
+                                    <a href="@gap.RankedUrl" target="_blank" rel="noopener"
+                                       style="color:var(--hub-color);">@TruncateUrl(gap.RankedUrl)</a>
+                                }
+                                else { <span style="color:var(--color-muted);">—</span> }
+                            </td>
+                            <td>
+                                @if (gap.HasDedicatedContent)
+                                {
+                                    <span class="badge badge--green">Has Page</span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge--red">No Page</span>
+                                }
+                            </td>
+                            <td style="font-size:12px;">
+                                @if (!string.IsNullOrEmpty(gap.TargetUrl))
+                                {
+                                    <a href="@gap.TargetUrl" target="_blank" rel="noopener"
+                                       style="color:var(--hub-color);">@TruncateUrl(gap.TargetUrl)</a>
+                                }
+                                else
+                                {
+                                    <a href="/content" style="color:#f59e0b;font-size:11px;font-weight:600;">+ Set target →</a>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div style="margin-top:16px;padding:16px;background:color-mix(in srgb, var(--hub-color) 8%, transparent);border-radius:8px;border:1px solid color-mix(in srgb, var(--hub-color) 20%, transparent);">
+            <strong style="color:var(--hub-color);">💡 How to fix gaps:</strong>
+            <span style="font-size:13px;margin-left:8px;">Go to the Content Hub and set a Target URL for each keyword, or create a new page targeting that keyword.</span>
+        </div>
+    }
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private List<GapItem> _gaps = [];
+    private bool _brandsLoading = true, _loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        _brandsLoading = false;
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        await LoadGaps();
+    }
+
+    private async Task LoadGaps()
+    {
+        if (_selectedBrand is null) return;
+        _loading = true;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<List<GapItem>>>(
+                $"api/search/gaps?brandId={_selectedBrand.Id}");
+            _gaps = resp?.Data ?? [];
+        }
+        finally { _loading = false; }
+    }
+
+    private static string RankClass(int? pos) => pos switch
+    {
+        null => "other",
+        <= 3 => "top3",
+        <= 10 => "top10",
+        <= 30 => "top30",
+        _ => "other",
+    };
+
+    private static string TruncateUrl(string url)
+    {
+        if (url.Length <= 40) return url;
+        try { var uri = new Uri(url); return uri.Host + (uri.AbsolutePath.Length > 20 ? uri.AbsolutePath[..20] + "…" : uri.AbsolutePath); }
+        catch { return url[..37] + "…"; }
+    }
+
+    private static string FormatVolume(int vol) => vol switch
+    {
+        >= 1000000 => $"{vol / 1000000}M",
+        >= 1000 => $"{vol / 1000}k",
+        _ => vol.ToString(),
+    };
+
+    // DTOs
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; public string PrimaryColor { get; set; } = "#6366f1"; }
+    private class GapItem
+    {
+        public Guid KeywordId { get; set; }
+        public string Keyword { get; set; } = "";
+        public int? CurrentPosition { get; set; }
+        public int? SearchVolume { get; set; }
+        public string? RankedUrl { get; set; }
+        public bool HasDedicatedContent { get; set; }
+        public string? TargetUrl { get; set; }
+    }
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

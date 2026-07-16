@@ -265,3 +265,99 @@ label { display: block; font-size: 12px; font-weight: 600;
 
 .hub-feature-name { font-weight: 600; color: var(--color-text); margin-bottom: 4px; }
 .hub-feature-desc { font-size: 12px; color: var(--color-text-muted); line-height: 1.5; }
+
+/* ── Sprint 25: Search Hub ─────────────────────────────────────────────── */
+
+/* Hub focus menu in sidebar */
+.hub-focus-menu { display: flex; flex-direction: column; gap: 2px;
+  padding: 8px 0; }
+.hub-focus-item { display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-radius: var(--radius-sm);
+  color: var(--color-text-muted); font-size: 13px; font-weight: 500;
+  text-decoration: none; transition: color 0.15s, background 0.15s;
+  border: none; background: none; cursor: pointer; }
+.hub-focus-item:hover { color: var(--hub-color); background: var(--hub-color-dim); }
+.hub-focus-item.active { color: var(--hub-color); background: var(--hub-color-dim);
+  font-weight: 600; }
+
+/* Brand pill selector row */
+.brand-pill-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+.brand-pill-btn { display: flex; align-items: center; gap: 8px;
+  padding: 7px 16px; border-radius: 999px; border: 2px solid var(--color-border);
+  background: var(--color-surface); color: var(--color-text);
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+.brand-pill-btn:hover { border-color: var(--hub-color); color: var(--hub-color); }
+.brand-pill-btn--active { border-color: var(--hub-color);
+  background: var(--hub-color-dim); color: var(--hub-color); }
+.brand-pill-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* Small stat cards */
+.stat-card { background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius); padding: 16px 20px; }
+.stat-card--sm { padding: 12px 16px; }
+.stat-label { font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--color-text-muted); margin-bottom: 4px; }
+.stat-value { font-size: 22px; font-weight: 800; color: var(--color-text); line-height: 1; }
+
+/* Data table */
+.table-container { background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius); overflow: hidden; }
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table thead tr { background: rgba(0,0,0,0.02);
+  border-bottom: 1px solid var(--color-border); }
+.data-table th { padding: 10px 16px; text-align: left; font-size: 11px;
+  font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--color-text-muted); white-space: nowrap; }
+.data-table td { padding: 12px 16px; font-size: 14px;
+  border-bottom: 1px solid var(--color-border); }
+.data-table tbody tr:last-child td { border-bottom: none; }
+.data-table tbody tr:hover { background: rgba(0,0,0,0.02); }
+
+/* Rank badges */
+.rank-badge { display: inline-block; padding: 2px 8px; border-radius: 999px;
+  font-size: 12px; font-weight: 800; }
+.rank-badge--top3  { background: rgba(16,185,129,0.12); color: #10b981; }
+.rank-badge--top10 { background: rgba(59,130,246,0.12); color: #3b82f6; }
+.rank-badge--top30 { background: rgba(245,158,11,0.12); color: #f59e0b; }
+.rank-badge--other { background: rgba(0,0,0,0.06); color: var(--color-text-muted); }
+
+/* Rank delta indicators */
+.rank-delta { font-size: 12px; font-weight: 700; }
+.rank-delta--up   { color: #10b981; }
+.rank-delta--down { color: #ef4444; }
+
+/* Generic badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.badge--green  { background: rgba(16,185,129,0.12); color: #10b981; }
+.badge--red    { background: rgba(239,68,68,0.12);  color: #ef4444; }
+.badge--amber  { background: rgba(245,158,11,0.12); color: #f59e0b; }
+.badge--purple { background: rgba(139,92,246,0.12); color: #8b5cf6; }
+.badge--gray   { background: rgba(0,0,0,0.06);      color: var(--color-text-muted); }
+
+/* Alert boxes */
+.alert-error   { padding: 10px 14px; background: rgba(239,68,68,0.08);
+  border: 1px solid rgba(239,68,68,0.2); border-radius: var(--radius-sm);
+  color: #ef4444; font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+.alert-success { padding: 10px 14px; background: rgba(16,185,129,0.08);
+  border: 1px solid rgba(16,185,129,0.2); border-radius: var(--radius-sm);
+  color: #10b981; font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+
+/* Hub-colored CTA button */
+.btn-hub { display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 18px; background: var(--hub-color); color: #fff;
+  border: none; border-radius: var(--radius-sm); font-size: 13px;
+  font-weight: 700; cursor: pointer; transition: opacity 0.15s; }
+.btn-hub:hover { opacity: 0.88; }
+.btn-hub:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Card */
+.card { background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius); }
+
+/* Table row highlight */
+.row--highlight-red td { background: rgba(239,68,68,0.04); }
+
+/* Form row */
+.form-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.form-row .form-group { flex: 1; min-width: 140px; }

@@ -1,5 +1,7 @@
 using Hangfire;
+using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Nucleus.Application.Search.Commands;
 using Nucleus.Domain.Entities;
 using Nucleus.Infrastructure.Data;
 using System.Net.Http.Headers;
@@ -12,6 +14,7 @@ public class KeywordRankJob(
     NucleusDbContext db,
     IHttpClientFactory httpFactory,
     IConfiguration config,
+    IMediator mediator,
     ILogger<KeywordRankJob> logger)
 {
     private const string DataForSeoUrl = "https://api.dataforseo.com/v3/serp/google/organic/live/regular";
@@ -103,6 +106,7 @@ public class KeywordRankJob(
                 var firstResult = results[0];
                 int? position = null;
                 string? rankedUrl = null;
+                int? searchVolume = null;
 
                 if (firstResult.TryGetProperty("items", out var itemsEl))
                 {
@@ -115,6 +119,14 @@ public class KeywordRankJob(
                             rankedUrl = urlEl.GetString();
                         break;
                     }
+                }
+
+                // Extract search volume if available in keyword info
+                if (firstResult.TryGetProperty("keyword_data", out var kwData)
+                    && kwData.TryGetProperty("keyword_info", out var kwInfo2)
+                    && kwInfo2.TryGetProperty("search_volume", out var svEl))
+                {
+                    searchVolume = svEl.ValueKind == JsonValueKind.Number ? svEl.GetInt32() : null;
                 }
 
                 // Get previous latest rank
@@ -132,6 +144,7 @@ public class KeywordRankJob(
                     Position = position,
                     PreviousPosition = previous,
                     RankedUrl = rankedUrl,
+                    SearchVolume = searchVolume,
                     CheckedAt = DateTimeOffset.UtcNow,
                 });
             }
@@ -140,5 +153,18 @@ public class KeywordRankJob(
         }
 
         logger.LogInformation("Keyword rank check complete for brand {BrandId}: {Count} keywords", brandId, keywords.Count);
+
+        // Evaluate search alerts after ranks are saved
+        try
+        {
+            var firedCount = await mediator.Send(
+                new EvaluateAlertsCommand(tenantId, brandId), ct);
+            if (firedCount > 0)
+                logger.LogInformation("Fired {Count} search alerts for brand {BrandId}", firedCount, brandId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Alert evaluation failed for brand {BrandId} — non-critical", brandId);
+        }
     }
 }

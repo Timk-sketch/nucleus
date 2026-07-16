@@ -19,6 +19,9 @@ public class NucleusDbContext(
     public DbSet<BrandKeyword> BrandKeywords => Set<BrandKeyword>();
     public DbSet<GhlContact> GhlContacts => Set<GhlContact>();
     public DbSet<KeywordRank> KeywordRanks => Set<KeywordRank>();
+    public DbSet<KeywordRankSnapshot> KeywordRankSnapshots => Set<KeywordRankSnapshot>();
+    public DbSet<SearchAlert> SearchAlerts => Set<SearchAlert>();
+    public DbSet<TopicCluster> TopicClusters => Set<TopicCluster>();
     public DbSet<EmailCampaign> EmailCampaigns => Set<EmailCampaign>();
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -104,6 +107,50 @@ public class NucleusDbContext(
             e.HasIndex(r => new { r.KeywordId, r.CheckedAt });
             e.Property(r => r.RankedUrl).HasMaxLength(500);
         });
+
+        // ── Sprint 25: Search Hub entities ────────────────────────────────
+
+        builder.Entity<KeywordRankSnapshot>(e =>
+        {
+            e.ToTable("keyword_rank_snapshots");
+            e.HasKey(s => s.Id);
+            e.HasIndex(s => s.TenantId);
+            e.HasIndex(s => new { s.TenantId, s.BrandId });
+            e.HasIndex(s => new { s.KeywordId, s.CheckedAt });
+            e.Property(s => s.Url).HasMaxLength(500);
+            e.Property(s => s.Competition).HasColumnType("decimal(5,4)");
+            e.HasOne(s => s.Brand).WithMany().HasForeignKey(s => s.BrandId);
+            e.HasOne(s => s.Keyword).WithMany().HasForeignKey(s => s.KeywordId);
+        });
+
+        builder.Entity<SearchAlert>(e =>
+        {
+            e.ToTable("search_alerts");
+            e.HasKey(a => a.Id);
+            e.HasIndex(a => a.TenantId);
+            e.HasIndex(a => new { a.TenantId, a.BrandId });
+            e.HasIndex(a => new { a.KeywordId, a.IsActive });
+            e.Property(a => a.AlertType).HasMaxLength(50).IsRequired();
+            e.Property(a => a.Message).HasMaxLength(500);
+            e.HasOne(a => a.Brand).WithMany().HasForeignKey(a => a.BrandId);
+            e.HasOne(a => a.Keyword).WithMany().HasForeignKey(a => a.KeywordId);
+        });
+
+        builder.Entity<TopicCluster>(e =>
+        {
+            e.ToTable("topic_clusters");
+            e.HasKey(c => c.Id);
+            e.HasIndex(c => c.TenantId);
+            e.HasIndex(c => new { c.TenantId, c.BrandId });
+            e.Property(c => c.Name).HasMaxLength(200).IsRequired();
+            e.Property(c => c.PillarKeyword).HasMaxLength(300).IsRequired();
+            e.Property(c => c.ClusterKeywordsJson).HasColumnType("jsonb").HasDefaultValue("[]");
+            e.Property(c => c.Status).HasMaxLength(50).HasDefaultValue("planning");
+            e.Property(c => c.Notes).HasMaxLength(1000);
+            e.HasOne(c => c.Brand).WithMany().HasForeignKey(c => c.BrandId);
+        });
+
+        // ── End Sprint 25 ─────────────────────────────────────────────────
 
         builder.Entity<EmailCampaign>(e =>
         {

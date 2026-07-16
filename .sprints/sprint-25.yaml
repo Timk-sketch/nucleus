@@ -1,6 +1,6 @@
 sprint: 25
 name: Search Hub
-status: pending
+status: in_progress
 
 entities:
   - name: KeywordRankSnapshot
