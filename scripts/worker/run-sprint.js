@@ -142,13 +142,13 @@ Reference the SEO Hub port map above for business logic. Apply multi-tenancy to 
       turn++;
       log(`Claude turn ${turn}/${MAX_TURNS}...`);
 
-      const response = await client.messages.create({
+      const response = await client.messages.stream({
         model: 'claude-sonnet-4-6',
         max_tokens: 32000,
         system: systemPrompt,
         messages,
         tools: getTools(),
-      });
+      }).finalMessage();
 
       totalInputTokens += response.usage.input_tokens;
       totalOutputTokens += response.usage.output_tokens;
@@ -252,7 +252,7 @@ Reference the SEO Hub port map above for business logic. Apply multi-tenancy to 
     log('All sprints complete. SEO Hub retirement checklist ready for review.');
     await notify('passed', {
       sprint: 'ALL',
-      name: 'All 5 Nucleus hubs built',
+      name: 'All Nucleus hubs built (24→30)',
       summary: 'Review .sprints/retirement-checklist.md — SEO Hub can now be retired.',
     });
   }
