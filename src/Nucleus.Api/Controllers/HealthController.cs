@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Nucleus.Infrastructure.Data;
 
@@ -22,7 +23,7 @@ public class HealthController(NucleusDbContext db) : ControllerBase
             // hangs until Railway times out the healthcheck. A direct connection with
             // ConnectionTimeout=3 fails fast at the TCP/auth layer instead.
             var baseConnStr = db.Database.GetConnectionString() ?? "";
-            var csb = new NpgsqlConnectionStringBuilder(baseConnStr) { ConnectionTimeout = 3 };
+            var csb = new NpgsqlConnectionStringBuilder(baseConnStr) { Timeout = 3 };
             using var conn = new NpgsqlConnection(csb.ConnectionString);
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
             await conn.OpenAsync(cts.Token);
