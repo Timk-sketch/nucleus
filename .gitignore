@@ -20,3 +20,8 @@ appsettings.*.json
 
 # Docker
 docker-compose.override.yml
+
+# Sprint worker
+scripts/worker/node_modules/
+scripts/worker/package-lock.json
+.sprints/*.log

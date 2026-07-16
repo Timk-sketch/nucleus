@@ -16,6 +16,10 @@ export async function deploy(sprintNumber, dryRun = false) {
   git(`add -A`);
   git(`commit -m "feat: Sprint ${sprintNumber} — ${getSprintName(sprintNumber)}"`);
 
+  // 1b. Rebase on latest master to avoid push rejection if master moved during build
+  git(`fetch origin master`);
+  git(`rebase origin/master`);
+
   // 2. Push to staging branch — Railway auto-deploys via GitHub integration (no webhook needed)
   git(`push origin HEAD:staging`);
   console.log(`[deployer] Pushed to staging branch — Railway will auto-deploy`);
