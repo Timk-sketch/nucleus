@@ -1,0 +1,216 @@
+@page "/content/brand-voice"
+@attribute [Authorize]
+@layout ContentLayout
+@inject HttpClient Http
+
+<PageTitle>Brand Voice — Content Hub</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Brand Voice</h1>
+        <p class="page-subtitle">Define banned words and phrases the AI generator will never use for each brand.</p>
+    </div>
+</div>
+
+@if (_brandsLoading)
+{
+    <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+}
+else if (_brands.Count == 0)
+{
+    <div class="empty-state">No brands yet. <a href="/brands">Add a brand</a> to get started.</div>
+}
+else
+{
+    <!-- Brand Picker -->
+    <div style="display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap;">
+        @foreach (var b in _brands)
+        {
+            <button @onclick="() => SelectBrand(b)"
+                    style="padding:8px 16px;border-radius:999px;border:2px solid @(_selectedBrand?.Id == b.Id ? "#3b82f6" : "var(--color-border)");
+                           background:@(_selectedBrand?.Id == b.Id ? "rgba(59,130,246,0.1)" : "var(--color-surface)");
+                           color:@(_selectedBrand?.Id == b.Id ? "#3b82f6" : "var(--color-text)");
+                           font-size:13px;font-weight:600;cursor:pointer;">
+                @b.Name
+            </button>
+        }
+    </div>
+
+    @if (_selectedBrand != null)
+    {
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:900px;">
+
+            <!-- Add Banned Word -->
+            <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:24px;">
+                <h3 style="font-size:14px;font-weight:700;margin:0 0 16px;">Add Banned Word / Phrase</h3>
+
+                @if (_addError != null)
+                {
+                    <div class="auth-error" style="margin-bottom:12px;">@_addError</div>
+                }
+                @if (_addSuccess != null)
+                {
+                    <div style="margin-bottom:12px;padding:10px 14px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius);color:#10b981;font-weight:600;">
+                        @_addSuccess
+                    </div>
+                }
+
+                <div class="form-group">
+                    <label>WORD OR PHRASE</label>
+                    <input class="form-input" @bind="_newWord"
+                           placeholder="e.g. cheap, best deal, guaranteed" />
+                </div>
+                <div class="form-group">
+                    <label>REASON <span class="label-hint">(optional)</span></label>
+                    <input class="form-input" @bind="_newReason"
+                           placeholder="e.g. Off-brand tone" />
+                </div>
+                <button class="btn-primary" @onclick="AddWord"
+                        disabled="@_adding" style="width:100%;justify-content:center;">
+                    @(_adding ? "Adding…" : "Add to banned list")
+                </button>
+            </div>
+
+            <!-- Current Banned Words -->
+            <div>
+                <h3 style="font-size:14px;font-weight:700;margin:0 0 14px;">
+                    Banned Words
+                    @if (_voice?.TotalBannedWords > 0)
+                    {
+                        <span style="margin-left:8px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;
+                                     background:rgba(239,68,68,0.1);color:#ef4444;">@_voice.TotalBannedWords</span>
+                    }
+                </h3>
+
+                @if (_loading)
+                {
+                    <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+                }
+                else if (_voice?.BannedWords.Count == 0)
+                {
+                    <div style="padding:24px;background:var(--color-surface);border:1px solid var(--color-border);
+                                border-radius:var(--radius);text-align:center;color:var(--color-muted);font-size:14px;">
+                        No banned words yet. Add one to shape your brand voice.
+                    </div>
+                }
+                else
+                {
+                    <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;">
+                        @foreach (var (word, idx) in (_voice?.BannedWords ?? []).Select((w, i) => (w, i)))
+                        {
+                            <div style="padding:12px 16px;@(idx < (_voice?.BannedWords.Count ?? 0) - 1 ? "border-bottom:1px solid var(--color-border);" : "")
+                                        display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                                <div style="flex:1;min-width:0;">
+                                    <div style="font-weight:600;font-size:14px;color:#ef4444;">@word.Word</div>
+                                    @if (!string.IsNullOrEmpty(word.Reason))
+                                    {
+                                        <div style="font-size:12px;color:var(--color-muted);margin-top:2px;">@word.Reason</div>
+                                    }
+                                </div>
+                                <span style="font-size:11px;color:var(--color-muted);flex-shrink:0;">
+                                    @word.CreatedAt.ToString("MMM d")
+                                </span>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Info Card -->
+        <div style="margin-top:24px;max-width:900px;padding:16px 20px;background:rgba(59,130,246,0.05);
+                    border:1px solid rgba(59,130,246,0.2);border-radius:var(--radius);">
+            <div style="font-size:13px;color:var(--color-text);line-height:1.6;">
+                <strong style="color:#3b82f6;">How Brand Voice works:</strong>
+                When the AI Generator creates content for this brand, it checks every generation against the banned words list.
+                Any banned word found in the generated content is flagged in the output.
+                Banned words are automatically injected into the AI prompt as "never use" instructions.
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private bool _brandsLoading = true, _loading, _adding;
+    private BrandVoiceDto? _voice;
+    private string _newWord = "", _newReason = "";
+    private string? _addError, _addSuccess;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrap<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        _brandsLoading = false;
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _addError = _addSuccess = null;
+        await LoadVoice();
+    }
+
+    private async Task LoadVoice()
+    {
+        if (_selectedBrand is null) return;
+        _loading = true;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrap<BrandVoiceDto>>(
+                $"api/content/brand-voice?brandId={_selectedBrand.Id}");
+            _voice = resp?.Data;
+        }
+        catch { }
+        finally { _loading = false; }
+    }
+
+    private async Task AddWord()
+    {
+        if (string.IsNullOrWhiteSpace(_newWord)) { _addError = "Word is required."; return; }
+        _addError = null; _addSuccess = null; _adding = true;
+
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("api/content/brand-voice/banned-words", new
+            {
+                BrandId = _selectedBrand!.Id,
+                Word = _newWord,
+                Reason = string.IsNullOrWhiteSpace(_newReason) ? null : _newReason,
+            });
+
+            if (resp.IsSuccessStatusCode)
+            {
+                _addSuccess = $"'{_newWord}' added to banned list.";
+                _newWord = _newReason = "";
+                await LoadVoice();
+            }
+            else
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                _addError = ExtractError(body);
+            }
+        }
+        catch (Exception ex) { _addError = ex.Message; }
+        finally { _adding = false; }
+    }
+
+    private static string ExtractError(string json)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("error", out var e)) return e.GetString() ?? "Error";
+        }
+        catch { }
+        return "Request failed";
+    }
+
+    // ── DTOs ──
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; }
+    private class BannedWordDto { public Guid Id { get; set; } public string Word { get; set; } = ""; public string? Reason { get; set; } public DateTimeOffset CreatedAt { get; set; } }
+    private class BrandVoiceDto { public Guid BrandId { get; set; } public string BrandName { get; set; } = ""; public List<BannedWordDto> BannedWords { get; set; } = []; public int TotalBannedWords { get; set; } }
+    private record ApiWrap<T>(bool Success, T? Data);
+}

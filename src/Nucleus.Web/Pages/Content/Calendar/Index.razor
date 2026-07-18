@@ -1,0 +1,200 @@
+@page "/content/calendar"
+@attribute [Authorize]
+@layout ContentLayout
+@inject HttpClient Http
+
+<PageTitle>Editorial Calendar — Content Hub</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Editorial Calendar</h1>
+        <p class="page-subtitle">Visualize scheduled and published content across your 8-week planning window.</p>
+    </div>
+</div>
+
+@if (_brandsLoading)
+{
+    <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+}
+else if (_brands.Count == 0)
+{
+    <div class="empty-state">No brands yet. <a href="/brands">Add a brand</a> to get started.</div>
+}
+else
+{
+    <!-- Brand Picker -->
+    <div style="display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap;align-items:center;">
+        @foreach (var b in _brands)
+        {
+            <button @onclick="() => SelectBrand(b)"
+                    style="padding:8px 16px;border-radius:999px;border:2px solid @(_selectedBrand?.Id == b.Id ? "#3b82f6" : "var(--color-border)");
+                           background:@(_selectedBrand?.Id == b.Id ? "rgba(59,130,246,0.1)" : "var(--color-surface)");
+                           color:@(_selectedBrand?.Id == b.Id ? "#3b82f6" : "var(--color-text)");
+                           font-size:13px;font-weight:600;cursor:pointer;">
+                @b.Name
+            </button>
+        }
+    </div>
+
+    @if (_selectedBrand != null)
+    {
+        @if (_loading)
+        {
+            <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+        }
+        else if (_calendar?.Entries.Count == 0)
+        {
+            <div class="empty-state">
+                No content scheduled in this window.
+                <a href="/content/generator">Generate content →</a>
+            </div>
+        }
+        else
+        {
+            <!-- Week-by-week layout -->
+            @foreach (var week in GetWeeks())
+            {
+                var entries = _calendar?.Entries.Where(e =>
+                    (e.ScheduledAt ?? e.PublishedAt ?? e.CreatedAt) >= week.Start &&
+                    (e.ScheduledAt ?? e.PublishedAt ?? e.CreatedAt) < week.End).ToList() ?? [];
+
+                <div style="margin-bottom:24px;">
+                    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+                                color:var(--color-muted);margin-bottom:10px;padding:0 2px;">
+                        @week.Start.ToString("MMM d") — @week.End.AddDays(-1).ToString("MMM d, yyyy")
+                    </div>
+
+                    @if (entries.Count == 0)
+                    {
+                        <div style="padding:14px 20px;background:var(--color-surface);border:1px dashed var(--color-border);
+                                    border-radius:var(--radius);color:var(--color-muted);font-size:13px;">
+                            No content scheduled this week
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="display:flex;flex-direction:column;gap:8px;">
+                            @foreach (var entry in entries)
+                            {
+                                <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);
+                                            padding:14px 20px;display:flex;justify-content:space-between;align-items:center;gap:16px;">
+                                    <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
+                                        <div style="width:4px;height:40px;border-radius:2px;flex-shrink:0;
+                                                    background:@StatusColor(entry.Status);"></div>
+                                        <div style="min-width:0;">
+                                            <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                                                @entry.Title
+                                            </div>
+                                            <div style="font-size:12px;color:var(--color-muted);margin-top:2px;">
+                                                @entry.PageType.Replace("_", " ")
+                                                @if (!string.IsNullOrEmpty(entry.KeywordText))
+                                                {
+                                                    <span> · @entry.KeywordText</span>
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div style="display:flex;align-items:center;gap:12px;flex-shrink:0;">
+                                        <span style="padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;
+                                                     background:@StatusBg(entry.Status);color:@StatusColor(entry.Status);">
+                                            @entry.Status
+                                        </span>
+                                        <span style="font-size:12px;color:var(--color-muted);">
+                                            @((entry.ScheduledAt ?? entry.PublishedAt ?? entry.CreatedAt).ToString("MMM d"))
+                                        </span>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        }
+    }
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private bool _brandsLoading = true, _loading;
+    private CalendarDto? _calendar;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrap<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        _brandsLoading = false;
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        await LoadCalendar();
+    }
+
+    private async Task LoadCalendar()
+    {
+        if (_selectedBrand is null) return;
+        _loading = true;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrap<CalendarDto>>(
+                $"api/content/calendar?brandId={_selectedBrand.Id}");
+            _calendar = resp?.Data;
+        }
+        catch { }
+        finally { _loading = false; }
+    }
+
+    private IEnumerable<(DateTimeOffset Start, DateTimeOffset End)> GetWeeks()
+    {
+        // 8 weeks: 1 past + 7 forward
+        var monday = DateTimeOffset.UtcNow.AddDays(-(int)DateTimeOffset.UtcNow.DayOfWeek + 1);
+        monday = new DateTimeOffset(monday.Year, monday.Month, monday.Day, 0, 0, 0, TimeSpan.Zero);
+        var start = monday.AddDays(-7);
+        for (int i = 0; i < 8; i++)
+            yield return (start.AddDays(i * 7), start.AddDays((i + 1) * 7));
+    }
+
+    private static string StatusColor(string status) => status switch
+    {
+        "published" => "#10b981",
+        "approved" => "#3b82f6",
+        "review" => "#f59e0b",
+        "draft" => "#6b7280",
+        _ => "#6b7280",
+    };
+
+    private static string StatusBg(string status) => status switch
+    {
+        "published" => "rgba(16,185,129,0.1)",
+        "approved" => "rgba(59,130,246,0.1)",
+        "review" => "rgba(245,158,11,0.1)",
+        "draft" => "rgba(107,114,128,0.1)",
+        _ => "rgba(107,114,128,0.1)",
+    };
+
+    // ── DTOs ──
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; }
+
+    private class CalendarDto
+    {
+        public Guid BrandId { get; set; }
+        public List<CalendarEntryDto> Entries { get; set; } = [];
+    }
+
+    private class CalendarEntryDto
+    {
+        public Guid Id { get; set; }
+        public string Title { get; set; } = "";
+        public string PageType { get; set; } = "";
+        public string Status { get; set; } = "";
+        public string? KeywordText { get; set; }
+        public DateTimeOffset? ScheduledAt { get; set; }
+        public DateTimeOffset? PublishedAt { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+    }
+
+    private record ApiWrap<T>(bool Success, T? Data);
+}

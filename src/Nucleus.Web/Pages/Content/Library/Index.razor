@@ -1,0 +1,246 @@
+@page "/content/library"
+@attribute [Authorize]
+@layout ContentLayout
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<PageTitle>Content Library — Content Hub</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Content Library</h1>
+        <p class="page-subtitle">All content pages — AI-generated and manually created — across every brand.</p>
+    </div>
+</div>
+
+@if (_brandsLoading)
+{
+    <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+}
+else if (_brands.Count == 0)
+{
+    <div class="empty-state">No brands yet. <a href="/brands">Add a brand</a> to get started.</div>
+}
+else
+{
+    <!-- Brand Picker -->
+    <div style="display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap;">
+        @foreach (var b in _brands)
+        {
+            var isActive = _selectedBrand?.Id == b.Id;
+            var btnStyle = "padding:8px 16px;border-radius:999px;border:2px solid " +
+                (isActive ? "#3b82f6" : "var(--color-border)") + ";background:" +
+                (isActive ? "rgba(59,130,246,0.1)" : "var(--color-surface)") + ";color:" +
+                (isActive ? "#3b82f6" : "var(--color-text)") +
+                ";font-size:13px;font-weight:600;cursor:pointer;";
+            <button @onclick="() => SelectBrand(b)" style="@btnStyle">@b.Name</button>
+        }
+    </div>
+
+    @if (_selectedBrand != null)
+    {
+        <!-- Filters -->
+        <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:center;">
+            <input class="form-input" @bind="_search"
+                   placeholder="Search titles…"
+                   style="max-width:280px;flex:1;" />
+            <button @onclick="DoSearch" class="btn-secondary" style="font-size:13px;padding:8px 14px;">Search</button>
+
+            <select class="form-input" @bind="_statusFilter" style="max-width:160px;">
+                <option value="">All statuses</option>
+                <option value="draft">Draft</option>
+                <option value="review">In Review</option>
+                <option value="approved">Approved</option>
+                <option value="published">Published</option>
+                <option value="rejected">Rejected</option>
+            </select>
+            <button @onclick="ApplyFilters" class="btn-secondary" style="font-size:13px;padding:8px 14px;">Filter</button>
+
+            <a href="/content/generator" class="btn-primary" style="font-size:13px;text-decoration:none;">
+                + Generate Content
+            </a>
+        </div>
+
+        @if (_loading)
+        {
+            <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+        }
+        else if (_items.Count == 0)
+        {
+            <div class="empty-state">
+                No content yet.
+                <a href="/content/generator">Generate your first piece →</a>
+            </div>
+        }
+        else
+        {
+            <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;margin-bottom:12px;">
+                <table style="width:100%;border-collapse:collapse;">
+                    <thead>
+                        <tr style="border-bottom:1px solid var(--color-border);background:rgba(0,0,0,0.02);">
+                            <th class="table-th">Title</th>
+                            <th class="table-th">Type</th>
+                            <th class="table-th">Status</th>
+                            <th class="table-th">Keyword</th>
+                            <th class="table-th">Words</th>
+                            <th class="table-th">Created</th>
+                            <th class="table-th"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var cp in _items)
+                        {
+                            <tr style="border-bottom:1px solid var(--color-border);">
+                                <td style="padding:14px 20px;font-weight:600;max-width:280px;">
+                                    <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">@cp.Title</div>
+                                    @if (cp.AiModel != null)
+                                    {
+                                        <div style="font-size:11px;color:var(--color-muted);margin-top:2px;">AI generated</div>
+                                    }
+                                </td>
+                                <td style="padding:14px 20px;font-size:13px;color:var(--color-muted);">
+                                    @cp.PageType.Replace("_", " ")
+                                </td>
+                                <td style="padding:14px 20px;">
+                                    <span style="@StatusBadgeStyle(cp.Status)">@cp.Status</span>
+                                </td>
+                                <td style="padding:14px 20px;font-size:13px;color:var(--color-muted);">
+                                    @(cp.KeywordText ?? "—")
+                                </td>
+                                <td style="padding:14px 20px;font-size:13px;color:var(--color-muted);">
+                                    @(cp.WordCount.HasValue ? cp.WordCount.Value.ToString("N0") : "—")
+                                </td>
+                                <td style="padding:14px 20px;font-size:13px;color:var(--color-muted);">
+                                    @cp.CreatedAt.ToString("MMM d, yyyy")
+                                </td>
+                                <td style="padding:14px 20px;text-align:right;">
+                                    @if (cp.Status == "draft")
+                                    {
+                                        <button @onclick="() => SubmitForReview(cp.Id)"
+                                                style="font-size:12px;color:#3b82f6;background:none;border:none;cursor:pointer;">
+                                            Submit
+                                        </button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--color-muted);">
+                <span>Showing @_items.Count of @_total</span>
+                <div style="display:flex;gap:8px;">
+                    @if (_page > 1)
+                    {
+                        <button @onclick="PrevPage" class="btn-secondary" style="font-size:13px;padding:6px 14px;">← Prev</button>
+                    }
+                    @if (_items.Count == _pageSize && _total > _page * _pageSize)
+                    {
+                        <button @onclick="NextPage" class="btn-secondary" style="font-size:13px;padding:6px 14px;">Next →</button>
+                    }
+                </div>
+            </div>
+        }
+    }
+}
+
+@code {
+    [SupplyParameterFromQuery] private string? BrandId { get; set; }
+
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private bool _brandsLoading = true, _loading;
+    private List<ContentPageDto> _items = [];
+    private int _total, _page = 1, _pageSize = 20;
+    private string _search = "", _statusFilter = "", _typeFilter = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrap<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        _brandsLoading = false;
+
+        BrandItem? preselect = null;
+        if (!string.IsNullOrEmpty(BrandId) && Guid.TryParse(BrandId, out var bid))
+            preselect = _brands.FirstOrDefault(b => b.Id == bid);
+        preselect ??= _brands.FirstOrDefault();
+
+        if (preselect != null) await SelectBrand(preselect);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _page = 1;
+        await LoadLibrary();
+    }
+
+    private async Task DoSearch() { _page = 1; await LoadLibrary(); }
+    private async Task ApplyFilters() { _page = 1; await LoadLibrary(); }
+
+    private async Task LoadLibrary()
+    {
+        if (_selectedBrand is null) return;
+        _loading = true;
+        try
+        {
+            var url = $"api/content/library?brandId={_selectedBrand.Id}&page={_page}&pageSize={_pageSize}";
+            if (!string.IsNullOrWhiteSpace(_search)) url += "&search=" + Uri.EscapeDataString(_search);
+            if (!string.IsNullOrWhiteSpace(_statusFilter)) url += "&status=" + _statusFilter;
+            if (!string.IsNullOrWhiteSpace(_typeFilter)) url += "&pageType=" + _typeFilter;
+
+            var resp = await Http.GetFromJsonAsync<ApiWrap<LibraryResult>>(url);
+            _total = resp?.Data?.Total ?? 0;
+            _items = resp?.Data?.Pages ?? [];
+        }
+        catch { }
+        finally { _loading = false; }
+    }
+
+    private async Task SubmitForReview(Guid id)
+    {
+        await Http.PutAsJsonAsync($"api/content/pages/{id}/approve", new { Approve = false });
+        await LoadLibrary();
+    }
+
+    private async Task PrevPage() { _page--; await LoadLibrary(); }
+    private async Task NextPage() { _page++; await LoadLibrary(); }
+
+    private static string StatusBadgeStyle(string status)
+    {
+        var (bg, color) = status switch
+        {
+            "published" => ("rgba(16,185,129,0.1)", "#10b981"),
+            "approved"  => ("rgba(59,130,246,0.1)", "#3b82f6"),
+            "review"    => ("rgba(245,158,11,0.1)", "#f59e0b"),
+            "draft"     => ("rgba(107,114,128,0.1)", "#6b7280"),
+            _           => ("rgba(239,68,68,0.1)", "#ef4444"),
+        };
+        return $"padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;background:{bg};color:{color};";
+    }
+
+    // ── DTOs ──
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; }
+
+    private class ContentPageDto
+    {
+        public Guid Id { get; set; }
+        public string Title { get; set; } = "";
+        public string PageType { get; set; } = "";
+        public string Status { get; set; } = "";
+        public string? KeywordText { get; set; }
+        public string? AiModel { get; set; }
+        public int? WordCount { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+    }
+
+    private class LibraryResult
+    {
+        public int Total { get; set; }
+        public List<ContentPageDto> Pages { get; set; } = [];
+    }
+
+    private record ApiWrap<T>(bool Success, T? Data);
+}

@@ -1,0 +1,248 @@
+@page "/content/keywords"
+@attribute [Authorize]
+@layout ContentLayout
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<PageTitle>Keyword Library — Content Hub</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Keyword Library</h1>
+        <p class="page-subtitle">All tracked keywords — with live rank positions and content coverage counts.</p>
+    </div>
+</div>
+
+@if (_brandsLoading)
+{
+    <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+}
+else if (_brands.Count == 0)
+{
+    <div class="empty-state">
+        No brands yet. <a href="/brands">Add a brand</a> to get started.
+    </div>
+}
+else
+{
+    <!-- Brand Picker -->
+    <div style="display:flex;gap:10px;margin-bottom:28px;flex-wrap:wrap;">
+        @foreach (var b in _brands)
+        {
+            var isActive = _selectedBrand?.Id == b.Id;
+            var btnStyle = "padding:8px 16px;border-radius:999px;border:2px solid " +
+                (isActive ? "#3b82f6" : "var(--color-border)") + ";background:" +
+                (isActive ? "rgba(59,130,246,0.1)" : "var(--color-surface)") + ";color:" +
+                (isActive ? "#3b82f6" : "var(--color-text)") +
+                ";font-size:13px;font-weight:600;cursor:pointer;";
+            <button @onclick="() => SelectBrand(b)" style="@btnStyle">@b.Name</button>
+        }
+    </div>
+
+    @if (_selectedBrand != null)
+    {
+        <!-- Stats bar -->
+        <div style="display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap;">
+            <div class="stat-card" style="flex:1;min-width:140px;">
+                <div class="stat-value">@(_library?.TotalKeywords ?? 0)</div>
+                <div class="stat-label">Total Keywords</div>
+            </div>
+            <div class="stat-card" style="flex:1;min-width:140px;">
+                <div class="stat-value">@(_library?.Keywords.Count(k => k.LatestPosition.HasValue) ?? 0)</div>
+                <div class="stat-label">With Rankings</div>
+            </div>
+            <div class="stat-card" style="flex:1;min-width:140px;">
+                <div class="stat-value">@(_library?.Keywords.Sum(k => k.ContentCount) ?? 0)</div>
+                <div class="stat-label">Content Pages</div>
+            </div>
+            <div class="stat-card" style="flex:1;min-width:140px;">
+                <div class="stat-value">@(_library?.Keywords.Count(k => k.ContentCount == 0) ?? 0)</div>
+                <div class="stat-label">No Content Yet</div>
+            </div>
+        </div>
+
+        <!-- Search + Actions -->
+        <div style="display:flex;gap:12px;margin-bottom:20px;align-items:center;flex-wrap:wrap;">
+            <input class="form-input" @bind="_search" @bind:event="oninput"
+                   placeholder="Search keywords…"
+                   style="max-width:300px;flex:1;" />
+            <button class="btn-primary" style="font-size:13px;"
+                    @onclick="NavigateToGenerator">
+                + Generate Content
+            </button>
+        </div>
+
+        @if (_loading)
+        {
+            <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+        }
+        else if (_library?.Keywords.Count == 0)
+        {
+            <div class="empty-state">
+                No keywords tracked yet. Go to Content → Blog posts → Keywords to add keywords.
+            </div>
+        }
+        else
+        {
+            <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;">
+                <table style="width:100%;border-collapse:collapse;">
+                    <thead>
+                        <tr style="border-bottom:1px solid var(--color-border);background:rgba(0,0,0,0.02);">
+                            <th class="table-th">Keyword</th>
+                            <th class="table-th">Position</th>
+                            <th class="table-th">Content</th>
+                            <th class="table-th">Target URL</th>
+                            <th class="table-th">Last Checked</th>
+                            <th class="table-th"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var kw in FilteredKeywords())
+                        {
+                            var delta = kw.LatestPosition.HasValue && kw.PreviousPosition.HasValue
+                                ? kw.PreviousPosition.Value - kw.LatestPosition.Value : (int?)null;
+                            <tr style="border-bottom:1px solid var(--color-border);">
+                                <td style="padding:14px 20px;font-weight:600;">@kw.Keyword</td>
+                                <td style="padding:14px 20px;">
+                                    @if (kw.LatestPosition.HasValue)
+                                    {
+                                        <span style="font-weight:700;font-size:15px;">#@kw.LatestPosition</span>
+                                        @if (delta.HasValue && delta.Value != 0)
+                                        {
+                                            var dStyle = delta.Value > 0
+                                                ? "margin-left:6px;font-size:11px;font-weight:700;color:#10b981;"
+                                                : "margin-left:6px;font-size:11px;font-weight:700;color:#ef4444;";
+                                            <span style="@dStyle">
+                                                @(delta.Value > 0 ? "▲" : "▼")@Math.Abs(delta.Value)
+                                            </span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span style="color:var(--color-muted);">—</span>
+                                    }
+                                </td>
+                                <td style="padding:14px 20px;">
+                                    @if (kw.ContentCount > 0)
+                                    {
+                                        <span style="padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;background:rgba(59,130,246,0.1);color:#3b82f6;">
+                                            @kw.ContentCount page@(kw.ContentCount != 1 ? "s" : "")
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <button @onclick="() => GenerateForKeyword(kw)"
+                                                style="padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;border:1px dashed var(--color-border);background:none;cursor:pointer;color:var(--color-muted);">
+                                            + Generate
+                                        </button>
+                                    }
+                                </td>
+                                <td style="padding:14px 20px;font-size:13px;color:var(--color-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                    @if (!string.IsNullOrEmpty(kw.TargetUrl))
+                                    {
+                                        <a href="@kw.TargetUrl" target="_blank" rel="noopener"
+                                           style="color:#3b82f6;">@kw.TargetUrl</a>
+                                    }
+                                    else
+                                    {
+                                        <span>—</span>
+                                    }
+                                </td>
+                                <td style="padding:14px 20px;font-size:13px;color:var(--color-muted);">
+                                    @(kw.LastCheckedAt.HasValue ? kw.LastCheckedAt.Value.ToString("MMM d") : "—")
+                                </td>
+                                <td style="padding:14px 20px;text-align:right;">
+                                    <button @onclick="() => GenerateForKeyword(kw)"
+                                            style="font-size:12px;color:#3b82f6;background:none;border:none;cursor:pointer;">
+                                        Generate →
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private bool _brandsLoading = true, _loading;
+    private string _search = "";
+    private KeywordLibraryDto? _library;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrap<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        _brandsLoading = false;
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _search = "";
+        await LoadLibrary();
+    }
+
+    private async Task LoadLibrary()
+    {
+        if (_selectedBrand is null) return;
+        _loading = true;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrap<KeywordLibraryDto>>(
+                $"api/content/keywords?brandId={_selectedBrand.Id}&pageSize=200");
+            _library = resp?.Data;
+        }
+        catch { }
+        finally { _loading = false; }
+    }
+
+    private IEnumerable<KeywordItemDto> FilteredKeywords()
+    {
+        var kws = _library?.Keywords ?? [];
+        if (!string.IsNullOrWhiteSpace(_search))
+            kws = kws.Where(k => k.Keyword.Contains(_search, StringComparison.OrdinalIgnoreCase)).ToList();
+        return kws;
+    }
+
+    private void NavigateToGenerator()
+    {
+        if (_selectedBrand is null) return;
+        Nav.NavigateTo("/content/generator?brandId=" + _selectedBrand.Id);
+    }
+
+    private void GenerateForKeyword(KeywordItemDto kw)
+    {
+        Nav.NavigateTo("/content/generator?brandId=" + _selectedBrand!.Id +
+            "&keywordId=" + kw.Id + "&keyword=" + Uri.EscapeDataString(kw.Keyword));
+    }
+
+    // ── DTOs ──
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; }
+
+    private class KeywordLibraryDto
+    {
+        public Guid BrandId { get; set; }
+        public string BrandName { get; set; } = "";
+        public int TotalKeywords { get; set; }
+        public List<KeywordItemDto> Keywords { get; set; } = [];
+    }
+
+    private class KeywordItemDto
+    {
+        public Guid Id { get; set; }
+        public string Keyword { get; set; } = "";
+        public string? TargetUrl { get; set; }
+        public int? LatestPosition { get; set; }
+        public int? PreviousPosition { get; set; }
+        public DateTimeOffset? LastCheckedAt { get; set; }
+        public int ContentCount { get; set; }
+    }
+
+    private record ApiWrap<T>(bool Success, T? Data);
+}

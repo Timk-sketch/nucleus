@@ -24,6 +24,12 @@ public class NucleusDbContext(
     public DbSet<TopicCluster> TopicClusters => Set<TopicCluster>();
     public DbSet<EmailCampaign> EmailCampaigns => Set<EmailCampaign>();
 
+    // Sprint 24 — Content Hub
+    public DbSet<ContentPage> ContentPages => Set<ContentPage>();
+    public DbSet<ContentTemplate> ContentTemplates => Set<ContentTemplate>();
+    public DbSet<AiUsage> AiUsages => Set<AiUsage>();
+    public DbSet<BannedWord> BannedWords => Set<BannedWord>();
+
     // Sprint 26 — Distribution Hub
     public DbSet<SocialPost> SocialPosts => Set<SocialPost>();
     public DbSet<EmailCampaignMessage> EmailCampaignMessages => Set<EmailCampaignMessage>();
@@ -220,6 +226,71 @@ public class NucleusDbContext(
             e.Property(a => a.EntityId).HasMaxLength(100);
             e.Property(a => a.Changes).HasColumnType("jsonb");
         });
+
+        // ── Sprint 24: Content Hub entities ───────────────────────────────
+
+        builder.Entity<ContentPage>(e =>
+        {
+            e.ToTable("content_pages");
+            e.HasKey(p => p.Id);
+            e.HasIndex(p => p.TenantId);
+            e.HasIndex(p => new { p.TenantId, p.BrandId });
+            e.HasIndex(p => new { p.BrandId, p.Status });
+            e.HasIndex(p => new { p.BrandId, p.ScheduledAt });
+            e.HasIndex(p => new { p.BrandId, p.KeywordId });
+            e.Property(p => p.Title).HasMaxLength(500).IsRequired();
+            e.Property(p => p.PageType).HasMaxLength(50).HasDefaultValue("blog_post");
+            e.Property(p => p.Status).HasMaxLength(50).HasDefaultValue("draft");
+            e.Property(p => p.SeoTitle).HasMaxLength(300);
+            e.Property(p => p.MetaDescription).HasMaxLength(500);
+            e.Property(p => p.AiModel).HasMaxLength(100);
+            e.Property(p => p.AiPrompt).HasMaxLength(2000);
+            e.Property(p => p.ReviewNotes).HasMaxLength(1000);
+            e.HasOne(p => p.Brand).WithMany().HasForeignKey(p => p.BrandId);
+            e.HasOne(p => p.Keyword).WithMany().HasForeignKey(p => p.KeywordId)
+                .IsRequired(false);
+        });
+
+        builder.Entity<ContentTemplate>(e =>
+        {
+            e.ToTable("content_templates");
+            e.HasKey(t => t.Id);
+            e.HasIndex(t => t.TenantId);
+            e.HasIndex(t => new { t.TenantId, t.BrandId });
+            e.HasIndex(t => new { t.BrandId, t.PageType });
+            e.HasIndex(t => new { t.BrandId, t.IsActive });
+            e.Property(t => t.Name).HasMaxLength(200).IsRequired();
+            e.Property(t => t.PageType).HasMaxLength(50).HasDefaultValue("blog_post");
+            e.Property(t => t.Body).IsRequired();
+            e.HasOne(t => t.Brand).WithMany().HasForeignKey(t => t.BrandId);
+        });
+
+        builder.Entity<AiUsage>(e =>
+        {
+            e.ToTable("ai_usages");
+            e.HasKey(u => u.Id);
+            e.HasIndex(u => u.TenantId);
+            e.HasIndex(u => new { u.TenantId, u.BrandId });
+            e.HasIndex(u => new { u.TenantId, u.Feature, u.CreatedAt });
+            e.Property(u => u.Feature).HasMaxLength(100).IsRequired();
+            e.Property(u => u.Model).HasMaxLength(100).IsRequired();
+            e.Property(u => u.CostUsd).HasColumnType("decimal(10,6)");
+            e.HasOne(u => u.Brand).WithMany().HasForeignKey(u => u.BrandId);
+        });
+
+        builder.Entity<BannedWord>(e =>
+        {
+            e.ToTable("banned_words");
+            e.HasKey(w => w.Id);
+            e.HasIndex(w => w.TenantId);
+            e.HasIndex(w => new { w.TenantId, w.BrandId });
+            e.HasIndex(w => new { w.BrandId, w.Word });
+            e.Property(w => w.Word).HasMaxLength(200).IsRequired();
+            e.Property(w => w.Reason).HasMaxLength(500);
+            e.HasOne(w => w.Brand).WithMany().HasForeignKey(w => w.BrandId);
+        });
+
+        // ── End Sprint 24 ─────────────────────────────────────────────────
 
         // ── Sprint 26: Distribution Hub entities ──────────────────────────
 

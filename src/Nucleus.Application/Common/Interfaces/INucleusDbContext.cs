@@ -16,6 +16,12 @@ public interface INucleusDbContext
     DbSet<TopicCluster> TopicClusters { get; }
     DbSet<EmailCampaign> EmailCampaigns { get; }
 
+    // Sprint 24 — Content Hub
+    DbSet<ContentPage> ContentPages { get; }
+    DbSet<ContentTemplate> ContentTemplates { get; }
+    DbSet<AiUsage> AiUsages { get; }
+    DbSet<BannedWord> BannedWords { get; }
+
     // Sprint 26 — Distribution Hub
     DbSet<SocialPost> SocialPosts { get; }
     DbSet<EmailCampaignMessage> EmailCampaignMessages { get; }

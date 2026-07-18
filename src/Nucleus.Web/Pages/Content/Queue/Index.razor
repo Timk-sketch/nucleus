@@ -1,0 +1,245 @@
+@page "/content/queue"
+@attribute [Authorize]
+@layout ContentLayout
+@inject HttpClient Http
+
+<PageTitle>Review Queue — Content Hub</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Review Queue</h1>
+        <p class="page-subtitle">Approve or reject AI-generated content before it is published.</p>
+    </div>
+</div>
+
+@if (_brandsLoading)
+{
+    <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+}
+else if (_brands.Count == 0)
+{
+    <div class="empty-state">No brands yet. <a href="/brands">Add a brand</a> to get started.</div>
+}
+else
+{
+    <!-- Brand Picker -->
+    <div style="display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap;">
+        @foreach (var b in _brands)
+        {
+            var isActive = _selectedBrand?.Id == b.Id;
+            var btnStyle = "padding:8px 16px;border-radius:999px;border:2px solid " +
+                (isActive ? "#3b82f6" : "var(--color-border)") + ";background:" +
+                (isActive ? "rgba(59,130,246,0.1)" : "var(--color-surface)") + ";color:" +
+                (isActive ? "#3b82f6" : "var(--color-text)") +
+                ";font-size:13px;font-weight:600;cursor:pointer;";
+            <button @onclick="() => SelectBrand(b)" style="@btnStyle">@b.Name</button>
+        }
+    </div>
+
+    @if (_selectedBrand != null)
+    {
+        @if (_loading)
+        {
+            <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+        }
+        else
+        {
+            <!-- Pending Review -->
+            <div style="margin-bottom:32px;">
+                <h3 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--color-muted);margin:0 0 14px;">
+                    Pending Review
+                    @if (_pending.Count > 0)
+                    {
+                        <span style="margin-left:8px;padding:2px 8px;border-radius:999px;font-size:11px;background:rgba(245,158,11,0.15);color:#f59e0b;">@_pending.Count</span>
+                    }
+                </h3>
+
+                @if (_pending.Count == 0)
+                {
+                    <div style="padding:24px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);text-align:center;color:var(--color-muted);font-size:14px;">
+                        No content awaiting review. Generate content to fill this queue.
+                    </div>
+                }
+                else
+                {
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        @foreach (var cp in _pending)
+                        {
+                            <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:20px;">
+                                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:12px;">
+                                    <div>
+                                        <div style="font-weight:700;font-size:15px;margin-bottom:4px;">@cp.Title</div>
+                                        <div style="font-size:12px;color:var(--color-muted);">
+                                            @cp.PageType.Replace("_", " ")
+                                            @if (!string.IsNullOrEmpty(cp.KeywordText))
+                                            {
+                                                <span> · keyword: <strong>@cp.KeywordText</strong></span>
+                                            }
+                                            @if (cp.WordCount.HasValue)
+                                            {
+                                                <span> · @cp.WordCount words</span>
+                                            }
+                                            @if (cp.AiModel != null)
+                                            {
+                                                <span> · AI generated</span>
+                                            }
+                                        </div>
+                                    </div>
+                                    <div style="font-size:12px;color:var(--color-muted);flex-shrink:0;">
+                                        @cp.CreatedAt.ToString("MMM d, yyyy")
+                                    </div>
+                                </div>
+
+                                <!-- Reviewer Notes Input -->
+                                <div style="margin-bottom:14px;">
+                                    <textarea class="form-input" @bind="_reviewNotes[cp.Id]"
+                                              rows="2" style="resize:vertical;font-size:13px;"
+                                              placeholder="Reviewer notes (optional)…"></textarea>
+                                </div>
+
+                                <!-- Actions -->
+                                <div style="display:flex;gap:10px;">
+                                    <button @onclick="() => ReviewPage(cp.Id, true)"
+                                            class="btn-primary" style="font-size:13px;padding:8px 18px;">
+                                        ✓ Approve
+                                    </button>
+                                    <button @onclick="() => ReviewPage(cp.Id, false)"
+                                            style="font-size:13px;padding:8px 18px;border-radius:var(--radius);border:1px solid #ef4444;background:rgba(239,68,68,0.05);color:#ef4444;cursor:pointer;font-weight:600;">
+                                        ✗ Reject
+                                    </button>
+                                </div>
+
+                                @if (_results.TryGetValue(cp.Id, out var approved))
+                                {
+                                    var resultStyle = approved
+                                        ? "margin-top:10px;font-size:13px;color:#10b981;font-weight:600;"
+                                        : "margin-top:10px;font-size:13px;color:#ef4444;font-weight:600;";
+                                    <div style="@resultStyle">
+                                        @(approved ? "✓ Approved" : "✗ Rejected — returned to draft")
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <!-- Recently Reviewed -->
+            @if (_recent.Count > 0)
+            {
+                <div>
+                    <h3 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--color-muted);margin:0 0 14px;">
+                        Recently Reviewed (last 30 days)
+                    </h3>
+                    <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;">
+                        @foreach (var (cp, idx) in _recent.Select((p, i) => (p, i)))
+                        {
+                            var rowBorder = idx < _recent.Count - 1
+                                ? "border-bottom:1px solid var(--color-border);"
+                                : "";
+                            var isApproved = cp.Status == "approved";
+                            var badgeStyle = isApproved
+                                ? "padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;background:rgba(59,130,246,0.1);color:#3b82f6;"
+                                : "padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;background:rgba(107,114,128,0.1);color:#6b7280;";
+                            <div style="@(rowBorder)padding:14px 20px;display:flex;justify-content:space-between;align-items:center;gap:16px;">
+                                <div>
+                                    <div style="font-weight:600;font-size:14px;">@cp.Title</div>
+                                    @if (!string.IsNullOrEmpty(cp.ReviewNotes))
+                                    {
+                                        <div style="font-size:12px;color:var(--color-muted);margin-top:2px;">@cp.ReviewNotes</div>
+                                    }
+                                </div>
+                                <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+                                    <span style="@badgeStyle">@cp.Status</span>
+                                    <span style="font-size:12px;color:var(--color-muted);">@cp.UpdatedAt.ToString("MMM d")</span>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        }
+    }
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private bool _brandsLoading = true, _loading;
+    private List<ContentPageDto> _pending = [], _recent = [];
+    private Dictionary<Guid, string> _reviewNotes = new();
+    private Dictionary<Guid, bool> _results = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrap<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        _brandsLoading = false;
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _results.Clear();
+        await LoadQueue();
+    }
+
+    private async Task LoadQueue()
+    {
+        if (_selectedBrand is null) return;
+        _loading = true;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrap<QueueResult>>(
+                $"api/content/queue?brandId={_selectedBrand.Id}");
+            _pending = resp?.Data?.PendingReview ?? [];
+            _recent = resp?.Data?.RecentlyReviewed ?? [];
+
+            foreach (var p in _pending)
+                _reviewNotes.TryAdd(p.Id, "");
+        }
+        catch { }
+        finally { _loading = false; }
+    }
+
+    private async Task ReviewPage(Guid pageId, bool approve)
+    {
+        _reviewNotes.TryGetValue(pageId, out var notes);
+        var resp = await Http.PutAsJsonAsync(
+            $"api/content/pages/{pageId}/approve",
+            new { Approve = approve, ReviewNotes = string.IsNullOrWhiteSpace(notes) ? null : notes });
+
+        if (resp.IsSuccessStatusCode)
+        {
+            _results[pageId] = approve;
+            await Task.Delay(800);
+            _pending.RemoveAll(p => p.Id == pageId);
+        }
+    }
+
+    // ── DTOs ──
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; }
+
+    private class ContentPageDto
+    {
+        public Guid Id { get; set; }
+        public string Title { get; set; } = "";
+        public string PageType { get; set; } = "";
+        public string Status { get; set; } = "";
+        public string? KeywordText { get; set; }
+        public string? AiModel { get; set; }
+        public int? WordCount { get; set; }
+        public string? ReviewNotes { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+        public DateTimeOffset UpdatedAt { get; set; }
+    }
+
+    private class QueueResult
+    {
+        public List<ContentPageDto> PendingReview { get; set; } = [];
+        public List<ContentPageDto> RecentlyReviewed { get; set; } = [];
+    }
+
+    private record ApiWrap<T>(bool Success, T? Data);
+}

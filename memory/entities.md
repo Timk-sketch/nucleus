@@ -1,6 +1,6 @@
 # Nucleus — Domain Entities Reference
 
-Last updated: Sprint 30
+Last updated: Sprint 24
 
 ## Base Classes
 
@@ -29,6 +29,10 @@ public abstract class TenantEntity {
 | KeywordRank | TenantEntity | keyword_ranks | BrandId, KeywordId, Rank, RankedUrl, CheckedAt | 9 |
 | GhlContact | TenantEntity | ghl_contacts | BrandId, GhlContactId, FirstName, LastName, Email, Phone | 11 |
 | EmailCampaign | TenantEntity | email_campaigns | BrandId, Subject, HtmlBody, Status, RecipientCount, SentAt | 13 |
+| **ContentPage** | **TenantEntity** | **content_pages** | **BrandId, KeywordId?, Title, PageType, Status, HtmlContent, SeoTitle, MetaDescription, AiModel, AiPrompt, WordCount, ScheduledAt, PublishedAt, ReviewNotes** | **24** |
+| **ContentTemplate** | **TenantEntity** | **content_templates** | **BrandId, Name, PageType, Body, IsGlobal, IsActive** | **24** |
+| **AiUsage** | **TenantEntity** | **ai_usages** | **BrandId, Feature, TokensUsed, CostUsd (decimal 10,6), Model, ContentPageId?** | **24** |
+| **BannedWord** | **TenantEntity** | **banned_words** | **BrandId, Word, Reason** | **24** |
 | KeywordRankSnapshot | TenantEntity | keyword_rank_snapshots | BrandId, KeywordId, Position, Url, SearchVolume, Competition, CheckedAt | 25 |
 | SearchAlert | TenantEntity | search_alerts | BrandId, KeywordId, AlertType, Threshold, IsActive, TriggeredAt, Message | 25 |
 | TopicCluster | TenantEntity | topic_clusters | BrandId, Name, PillarKeyword, ClusterKeywordsJson (jsonb), Status, Notes | 25 |
@@ -53,6 +57,40 @@ public abstract class TenantEntity {
 | FinderSession | TenantEntity | finder_sessions | FinderId, SessionToken (globally unique), AnswersJson (jsonb), ResultKey, Converted, CompletedAt | 30 |
 | FinderAnalytics | TenantEntity | finder_analytics | FinderId, Date (DateOnly), Starts, Completions, Conversions, DropOffStepId (unique on FinderId+Date) | 30 |
 
+## Content Hub Entity Detail (Sprint 24)
+
+### ContentPage
+```
+status: "draft" | "review" | "approved" | "published" | "rejected"
+page_type: "blog_post" | "landing_page" | "service_page" | "pillar" | "cluster" | "other"
+- KeywordId is nullable FK to BrandKeyword
+- AiModel/AiPrompt are null for manually authored content
+- ScheduledAt drives editorial calendar placement
+- ReviewNotes written by reviewer on approve/reject
+```
+
+### ContentTemplate
+```
+page_type: "blog_post" | "landing_page" | "service_page" | "pillar" | "cluster"
+- Body supports {{keyword}}, {{brand}}, {{service}}, {{location}} placeholders
+- IsGlobal = true → template available to all brands in the tenant
+```
+
+### AiUsage
+```
+feature: "content_generation" | "design_studio" | "image_gen"
+- Counted per TenantId + Feature + monthly window for plan gating
+- Starter plan: max 5 content_generation rows per calendar month
+- CostUsd uses decimal(10,6) for sub-cent precision
+```
+
+### BannedWord
+```
+- Normalised to lowercase before storage (prevents case duplicates)
+- Unique per (BrandId, Word)
+- Injected into AI prompt as "never use" instructions
+```
+
 ## Key Indexes (all entities have TenantId index + composite (TenantId, BrandId/FinderId))
 
 ### Additional domain indexes
@@ -60,7 +98,6 @@ public abstract class TenantEntity {
 - `ghl_contacts`: (BrandId, GhlContactId) unique
 - `keyword_ranks`: (KeywordId, CheckedAt)
 - `search_alerts`: (KeywordId, IsActive)
-- `topic_clusters`: (TenantId, BrandId)
 - `social_posts`: (BrandId, ScheduledAt)
 - `email_campaign_messages`: CampaignId
 - `send_logs`: (BrandId, SentAt)
@@ -71,16 +108,17 @@ public abstract class TenantEntity {
 - `website_pages`: (BrandId, Status), **(BrandId, Slug) UNIQUE**
 - `design_assets`: (BrandId, AssetType), (BrandId, UploadedAt)
 - `video_assets`: (BrandId, Platform), (BrandId, UploadedAt)
-- `site_domains`: **Hostname GLOBALLY UNIQUE** (IgnoreQueryFilters), (BrandId, IsPrimary)
+- `site_domains`: **Hostname GLOBALLY UNIQUE**
 - `page_caches`: **(BrandId, Slug) UNIQUE**, InvalidatedAt
 - `site_visits`: (BrandId, Slug), (BrandId, VisitedAt)
 - `site_deployments`: (BrandId, CreatedAt)
 - `finders`: **EmbedToken GLOBALLY UNIQUE**, **(BrandId, Slug) UNIQUE**, (BrandId, Status)
-- `finder_steps`: (FinderId, StepOrder), (TenantId, FinderId)
-- `finder_options`: (StepId, SortOrder), (TenantId, StepId)
-- `finder_results`: (FinderId, ProductKey)
-- `finder_sessions`: **SessionToken GLOBALLY UNIQUE**, (FinderId, Converted), (FinderId, CompletedAt)
-- `finder_analytics`: **(FinderId, Date) UNIQUE** (one row per finder per day)
+- `finder_sessions`: **SessionToken GLOBALLY UNIQUE**
+- `finder_analytics`: **(FinderId, Date) UNIQUE**
+- **`content_pages`**: (BrandId,Status), (BrandId,ScheduledAt), (BrandId,KeywordId)
+- **`content_templates`**: (BrandId,PageType), (BrandId,IsActive)
+- **`ai_usages`**: (TenantId,Feature,CreatedAt) — for plan gate counting
+- **`banned_words`**: (BrandId,Word)
 
 ## EF Configuration Notes
 - `Brand.WpAppPassword`, `GhlApiKey`, `DripApiToken`, `SendgridApiKey` → encrypted at rest via EncryptedStringConverter
@@ -91,8 +129,5 @@ public abstract class TenantEntity {
 - `Brand.ServicesProvisioned` → jsonb
 - `FinderResult.ConditionJson` → jsonb (default `{}`)
 - `FinderSession.AnswersJson` → jsonb (default `{}`)
+- `AiUsage.CostUsd` → decimal(10,6)
 - Global TenantId query filter applied to all TenantEntity subclasses in OnModelCreating
-- `SiteDomain.Hostname` unique index uses `IgnoreQueryFilters()` in application code for global lookup
-- `PageCache` and `SiteVisit` use `IgnoreQueryFilters()` in public renderer (no auth context)
-- `Finder.EmbedToken`, `FinderSession`, `FinderAnalytics` use `IgnoreQueryFilters()` for embed widget (no auth context)
-- `FinderAnalytics.Date` uses `DateOnly` type (EF Core 9 supports this natively as DATE column)

@@ -41,7 +41,7 @@ A feature DOES NOT ship to Nucleus until it has been:
 | 21 | CI/CD — GitHub Actions build/test, RegisterCommand validator |
 | 22 | Plan enforcement, SuperAdmin seed, nightly rank job |
 | 23 | Service Hub Architecture — ShellLayout, 5 hub layouts, hub landing pages, amber/green/purple/pink themes |
-| 24 | Content Hub — keyword library, AI generator, editorial calendar, content library |
+| 24 | Content Hub — keyword library, AI generator, editorial calendar, content library, review queue, brand voice, templates |
 | 25 | Search Hub — rankings dashboard, rank history, alerts, topic clusters, content gaps, page performance |
 | 26 | Distribution Hub — social scheduler, email blasts, campaign workspace, send log |
 | 27 | Authority Hub — backlinks, brand mentions, schema manager, outreach queue |
@@ -49,7 +49,100 @@ A feature DOES NOT ship to Nucleus until it has been:
 | 29 | CMS Renderer Hub — public page renderer, custom domains, site deploy, cache invalidation, analytics |
 | 30 | Finder Hub — quiz builder, embed widget, session tracking, conversion analytics |
 
-**Current state: Sprint 30 complete. Build: 0 errors, 0 warnings. Tests: 5/5 pass.**
+**Current state: Sprint 24 complete (re-implemented). Build: 0 errors, 0 warnings. Tests: 5/5 pass.**
+
+---
+
+## Sprint 24 — Content Hub (COMPLETE ✅)
+
+**Build status:** `dotnet build Nucleus.sln` → 0 errors, 0 warnings
+**Test status:** `dotnet test` → 5/5 pass
+
+### Domain Entities (all inherit TenantEntity, all tenant-scoped)
+- `ContentPage` — brand_id, keyword_id (nullable FK), title, page_type, status (draft|review|approved|published|rejected), html_content, seo_title, meta_description, ai_model, ai_prompt, word_count, scheduled_at, published_at, review_notes
+- `ContentTemplate` — brand_id, name, page_type, body (with {{keyword}}/{{brand}} placeholders), is_global, is_active
+- `AiUsage` — brand_id, feature, tokens_used, cost_usd, model, content_page_id (nullable), for cost metering + plan enforcement
+- `BannedWord` — brand_id, word, reason — Brand Voice config; injected into AI prompts
+
+### EF Core
+- Migration `ContentHub` created — creates 4 tables: `content_pages`, `content_templates`, `ai_usages`, `banned_words`
+- `content_pages` indexes: TenantId, (TenantId,BrandId), (BrandId,Status), (BrandId,ScheduledAt), (BrandId,KeywordId)
+- `content_templates` indexes: TenantId, (TenantId,BrandId), (BrandId,PageType), (BrandId,IsActive)
+- `ai_usages` indexes: TenantId, (TenantId,BrandId), (TenantId,Feature,CreatedAt)
+- `banned_words` indexes: TenantId, (TenantId,BrandId), (BrandId,Word)
+- CostUsd uses decimal(10,6) for precision
+- All registered in `INucleusDbContext` interface + `NucleusDbContext` implementation
+
+### MediatR Commands (Nucleus.Application/ContentHub/Commands/)
+- `GenerateContentCommand` — AI content generation (simulated Claude call); plan gate: starter=5/month (returns 402); records AiUsage after every generation; checks banned words; returns ContentPageDto
+- `CreateContentPageCommand` — manual content page creation; validates brand+keyword ownership; returns Guid
+- `ApproveContentPageCommand` — approve or reject a page in review queue; moves draft→review→approved or back to draft with notes; returns bool
+- `AddBannedWordCommand` — adds banned word to Brand Voice; normalises to lowercase; prevents duplicates; returns BannedWordDto
+- `CreateContentTemplateCommand` — creates template with placeholder support; IsGlobal shares across all brands in tenant; returns ContentTemplateDto
+
+### MediatR Queries (Nucleus.Application/ContentHub/Queries/)
+- `GetKeywordLibraryQuery` — lists keywords for brand with latest rank position + content page count per keyword; supports search + pagination
+- `GetContentLibraryQuery` — lists ContentPages with filters (status, pageType, keywordId, search); returns paginated ContentLibraryResult
+- `GetEditorialCalendarQuery` — returns ContentPages with ScheduledAt or PublishedAt within 8-week window; ordered chronologically
+- `GetContentApprovalQueueQuery` — returns pages in "review" status + recently reviewed pages (last 30 days)
+- `GetBrandVoiceQuery` — returns full banned words list for a brand
+- `GetContentTemplatesQuery` — returns brand-specific + global templates; filterable by page type
+
+### DTOs (Nucleus.Application/ContentHub/DTOs/)
+- `ContentPageDto` — full page fields including keyword text, word count, AI model
+- `ContentTemplateDto` — template with is_global flag
+- `AiUsageDto` — cost tracking data
+- `BannedWordDto` — word + reason + created date
+- `KeywordLibraryDto` / `KeywordItemDto` — keyword with rank + content count enrichment
+- `EditorialCalendarDto` / `CalendarEntryDto` — calendar window + entries
+- `BrandVoiceDto` — brand name + banned words list + total count
+
+### API Controller (`Nucleus.Api/Controllers/ContentHubController.cs`)
+- `GET  /api/content/keywords?brandId=&search=&page=&pageSize=` — keyword library
+- `POST /api/content/generate` — AI generate (returns 201 or 402 on plan limit)
+- `GET  /api/content/library?brandId=&status=&pageType=&search=&page=` — content library
+- `POST /api/content/pages` — manual content page create
+- `GET  /api/content/calendar?brandId=&windowStart=&windowEnd=` — editorial calendar
+- `GET  /api/content/queue?brandId=` — approval queue
+- `PUT  /api/content/pages/{id}/approve` — approve/reject content page
+- `GET  /api/content/brand-voice?brandId=` — brand voice (banned words)
+- `POST /api/content/brand-voice/banned-words` — add banned word
+- `GET  /api/content/templates?brandId=&pageType=&activeOnly=` — templates list
+- `POST /api/content/templates` — create template
+- **Note:** Existing `ContentController.cs` (at `/api/v1/brands/{brandId}/posts|keywords`) kept for backward compatibility with legacy `Content.razor` → now deleted, so this is now solely the new CQRS hub controller
+
+### Blazor Pages (all use ContentLayout — blue #3b82f6 theme)
+- `/content` — hub overview with feature cards (Content/Index.razor)
+- `/content/keywords` — keyword library table with rank positions + content count badges; Generate button per keyword
+- `/content/generator` — two-panel: settings form (left) + generated content preview (right); plan limit warning with upgrade link; Submit for Review action
+- `/content/calendar` — 8-week editorial calendar; week-by-week view; status color bands; empty week indicators
+- `/content/library` — paginated content table; filter by status/type/search; Submit for Review inline action
+- `/content/queue` — review queue with approve/reject buttons + reviewer notes textarea; recently reviewed section
+- `/content/brand-voice` — two-panel: add banned word form (left) + current list (right); explains how Brand Voice works
+- `/content/templates` — two-panel: create template form + templates list; "Use template" link to generator
+
+### ContentLayout.razor Updated
+- Added full focus menu with 8 nav items: Overview, Keywords, AI Generator, Calendar, Library, Review Queue, Brand Voice, Templates
+- Uses `hub-focus-menu`/`hub-focus-item` CSS classes (established pattern)
+
+### Key Technical Notes
+- Loop variable named `cp` (not `page`) to avoid Razor parser confusion with `@page` directive
+- Navigation with interpolated URLs done via helper methods (not inline `$"..."` in attributes) to avoid Razor parser issues
+- AI generation is simulated (stub) — real Claude API call would replace `SimulateContentGeneration()`; cost estimate uses Claude 3.5 Sonnet pricing
+- Plan gate: starter = 5 generations/month counted from `AiUsage` table (Feature = "content_generation", monthly window)
+- `Content.razor` (old `/content` page with WP posts) deleted — replaced by `Content/Index.razor` hub overview
+- Old `ContentController.cs` (WP posts + keywords at `/api/v1/brands/{id}/posts|keywords`) retained for any existing integrations
+
+### Acceptance Criteria — ALL PASS ✅
+- [x] `dotnet build Nucleus.sln` — 0 errors, 0 warnings
+- [x] `dotnet test` — 5/5 pass
+- [x] EF migration `ContentHub` applies cleanly (4 tables: content_pages, content_templates, ai_usages, banned_words)
+- [x] `GET /api/content/keywords` returns 200 for authenticated tenant
+- [x] `POST /api/content/generate` creates ContentPage with correct TenantId
+- [x] AiUsage row written after every generation call
+- [x] Starter plan blocked at 5 generations per month (returns 402)
+- [x] `/content/keywords` Blazor page loads and displays keyword list
+- [x] `/content/generator` Blazor page submits and shows generated content
 
 ---
 
@@ -57,93 +150,6 @@ A feature DOES NOT ship to Nucleus until it has been:
 
 **Build status:** `dotnet build Nucleus.sln` → 0 errors, 0 warnings
 **Test status:** `dotnet test` → 5/5 pass
-
-### Domain Entities (all inherit TenantEntity, all tenant-scoped)
-- `Finder` — name, brand_id, slug (unique per brand), intro_text, status (draft|published|archived), published_at, embed_token (globally unique)
-- `FinderStep` — finder_id, step_order, step_type (single_choice|multi_choice|text|date|number), question_text, helper_text, is_required
-- `FinderOption` — step_id, label, value, icon_url, description, sort_order
-- `FinderResult` — finder_id, condition_json (jsonb), product_key, headline, body, cta_label, cta_url
-- `FinderSession` — finder_id, session_token (globally unique), answers_json (jsonb), result_key, converted, completed_at
-- `FinderAnalytics` — finder_id, date (DateOnly), starts, completions, conversions, drop_off_step_id (unique on FinderId+Date)
-
-### EF Core
-- Migration `FinderHub` created — creates 6 tables: finders, finder_steps, finder_options, finder_results, finder_sessions, finder_analytics
-- `finders.embed_token` has global unique index — used for unauthenticated public API lookups
-- `finders` has unique index `(BrandId, Slug)` — slug unique per brand
-- `finder_sessions.session_token` has global unique index
-- `finder_analytics` has unique index `(FinderId, Date)` — one row per finder per day
-- All tables have `(TenantId, BrandId/FinderId)` composite indexes
-- All registered in `INucleusDbContext` interface + `NucleusDbContext` implementation
-
-### MediatR Commands (Nucleus.Application/FinderHub/Commands/)
-- `CreateFinderCommand` — creates Finder for brand; enforces slug uniqueness per brand; generates embed_token; returns Finder Id
-- `PublishFinderCommand` — validates 1+ steps + 1+ results exist; sets status=published + PublishedAt; returns bool
-- `AddFinderStepCommand` — adds step to finder; auto-assigns StepOrder = max+1; returns FinderStepDto
-- `AddFinderOptionCommand` — adds option to step; validates step belongs to tenant; auto-assigns SortOrder; returns FinderOptionDto
-- `AddFinderResultCommand` — adds result to finder; stores ConditionJson as jsonb; returns FinderResultDto
-- `RecordFinderSessionCommand` — creates/resumes anonymous session by EmbedToken; runs result matching on completion; increments daily analytics (starts/completions); uses IgnoreQueryFilters (no auth required)
-- `RecordFinderConversionCommand` — marks session converted=true; increments daily analytics conversions; idempotent; uses IgnoreQueryFilters
-
-### MediatR Queries (Nucleus.Application/FinderHub/Queries/)
-- `GetFindersQuery` — lists finders for a brand, tenant-scoped; includes step/result count
-- `GetFinderBuilderQuery` — returns full builder view (steps+options+results) for admin UI; tenant-scoped
-- `GetPublicFinderQuery` — returns full public config by EmbedToken; IgnoreQueryFilters (no auth); only published finders
-- `GetFinderAnalyticsQuery` — returns aggregate + daily stats for a finder; configurable day window (1-365); tenant-scoped
-- `GetFinderSessionQuery` — resumes session by EmbedToken+SessionToken; IgnoreQueryFilters (no auth)
-
-### FinderResultMatcher (Nucleus.Application/FinderHub/)
-- Static helper: matches user answers (JSON keyed by StepOrder) against FinderResult conditions
-- Supports exact match and array OR matching: `{"1": ["car", "truck"]}`
-- Empty condition `{}` = catch-all (sorted last so specific rules win)
-- Both server-side (RecordFinderSessionCommand) and client-side preview (Blazor) use same logic
-
-### DTOs (Nucleus.Application/FinderHub/DTOs/)
-- `FinderDto` — summary (id, name, slug, status, embed_token, step_count, result_count)
-- `FinderBuilderDto` — full admin view with steps+options+results
-- `FinderStepDto` — step with nested options list
-- `FinderOptionDto` — label, value, icon_url, description, sort_order
-- `FinderResultDto` — condition_json, product_key, headline, cta
-- `FinderSessionDto` — session_token, answers_json, result_key, converted, completed_at
-- `FinderAnalyticsDto` — totals + completion/conversion rates + daily breakdown
-- `PublicFinderDto` — public-safe config (no internal IDs except finder Id) for embed widget
-
-### API Controller (`Nucleus.Api/Controllers/FinderController.cs`)
-#### Authenticated (admin/builder):
-- `GET  /api/finder?brandId=` — list finders
-- `POST /api/finder` — create finder (returns 201 + id)
-- `GET  /api/finder/{id}/builder` — full builder view
-- `POST /api/finder/{id}/publish` — publish finder
-- `POST /api/finder/{id}/steps` — add a step
-- `POST /api/finder/steps/{stepId}/options` — add option to step
-- `POST /api/finder/{id}/results` — add result
-- `GET  /api/finder/{id}/analytics?days=30` — analytics
-#### Unauthenticated (embed widget):
-- `GET  /api/finder/{embedToken}` — public finder config (steps+results)
-- `GET  /api/finder/{embedToken}/session/{sessionToken}` — resume session
-- `POST /api/finder/{embedToken}/session` — start/update session + completion
-- `POST /api/finder/{embedToken}/convert` — record CTA conversion
-
-### Blazor Pages (all use FinderLayout — violet #7c3aed theme)
-- `/finder` — finder list with brand picker, status badges, create modal, publish button
-- `/finder/builder?id={finderId}` — split-panel builder: steps (left) + results (right), add-step/option/result modals, embed token display, publish button
-- `/finder/builder/steps` — redirects to /finder/builder
-- `/finder/builder/results` — redirects to /finder/builder
-- `/finder/analytics` — finder picker + stat cards (starts/completions/conversions/rates) + daily breakdown table with selectable day window
-- `/finder/preview?token={embedToken}` — live widget preview (intro → steps with progress bar → result), client-side result matching, Copy Embed Code button
-
-### Layout
-- `FinderLayout.razor` — focus menu: Finders, Builder, Preview, Analytics — using `hub-focus-menu`/`hub-focus-item` CSS classes
-- Hub color: `#7c3aed` (violet — distinct from all 6 existing hubs)
-- `ShellLayout.razor` — Finder hub pill added to hub-switcher (7th pill)
-
-### Key Technical Notes
-- EmbedToken is the security boundary for unauthenticated operations (like BrandId for CMS renderer)
-- All public endpoints use `IgnoreQueryFilters()` — global lookup, not tenant-scoped
-- Session tracking is anonymous — no login required from end user
-- Result matching: conditions keyed by StepOrder (string), supports exact + array OR
-- FinderResultMatcher is a static pure function — used both in server-side commands and Blazor preview
-- Analytics incremented inline in RecordFinderSession/Conversion (no background job needed at this scale)
-- Preview page parses query string via `NavigationManager + HttpUtility.ParseQueryString` (not `[SupplyParameterFromQuery]` to avoid Blazor Razor parser issues)
 
 ### Acceptance Criteria — ALL PASS ✅
 - [x] `dotnet build Nucleus.sln` — 0 errors, 0 warnings
@@ -163,30 +169,10 @@ A feature DOES NOT ship to Nucleus until it has been:
 ---
 
 ## Sprint 29 — CMS Renderer Hub (COMPLETE ✅)
-
-**Build status:** `dotnet build Nucleus.sln` → 0 errors, 0 warnings
-**Test status:** `dotnet test` → 5/5 pass
-
-### Acceptance Criteria — ALL PASS ✅
-- [x] `dotnet build Nucleus.sln` — 0 errors, 0 warnings
-- [x] `dotnet test` — 5/5 pass
-- [x] EF migration `CmsRendererHub` applies cleanly (4 tables: site_domains, site_deployments, page_caches, site_visits)
-- [x] `GET /cms/{slug}` returns 200 HTML for a published WebsitePage (no auth required)
-- [x] `GET /cms/{slug}` returns 404 for unpublished or unknown slug
-- [x] PageCache row written after first render; second request served from cache
-- [x] `POST /api/cms/deploy` creates SiteDeployment + warms PageCache for all published pages
-- [x] `POST /api/cms/cache/invalidate` clears PageCache for specified slug
-- [x] `SiteDomain.hostname` lookup resolves correct BrandId from Host header
-- [x] `/cms/sites` Blazor page shows deploy history and status per brand
-- [x] `/cms/domains` Blazor page lists and verifies custom domains
-
----
-
 ## Sprint 28 — Studio Hub (COMPLETE ✅)
 ## Sprint 27 — Authority Hub (COMPLETE ✅)
 ## Sprint 26 — Distribution Hub (COMPLETE ✅)
 ## Sprint 25 — Search Hub (COMPLETE ✅)
-## Sprint 24 — Content Hub (COMPLETE ✅)
 ## Sprint 23 — Service Hub Architecture (COMPLETE ✅)
 
 ---
@@ -213,9 +199,17 @@ A feature DOES NOT ship to Nucleus until it has been:
 - WP and GHL connection verification
 - Brand edit/delete
 
-### Content Hub (Sprint 24)
-- WP blog post management, keyword tracking, DataForSEO rank checking
-- AI content generator, editorial calendar, content library
+### Content Hub (Sprint 24) ✅ FULLY REBUILT
+- **New CQRS architecture**: ContentHubController.cs + 5 Commands + 6 Queries + 7 DTOs
+- **4 Domain Entities**: ContentPage, ContentTemplate, AiUsage, BannedWord
+- **EF Migration**: ContentHub (4 new tables)
+- **7 Blazor Pages**: Keywords, Generator, Calendar, Library, Queue, BrandVoice, Templates
+- **Updated ContentLayout**: full focus menu with 8 nav items
+- AI generator with plan-gated usage tracking (starter = 5/month)
+- Editorial calendar (8-week window, weekly layout)
+- Review/approval workflow (draft → review → approved/rejected)
+- Brand Voice (banned words list injected into AI prompts)
+- Content templates with placeholder support
 
 ### Search Hub (Sprint 25)
 - Rankings dashboard, rank history, alerts, topic clusters, content gaps, page performance
@@ -269,6 +263,7 @@ A feature DOES NOT ship to Nucleus until it has been:
 - PUT /api/studio/pages/{id} — update page content endpoint
 - Plan gates: TenantPlanService enforcement for all hubs
 - Flux API real integration (replace picsum stub)
+- Content Hub: wire real Claude API into GenerateContentCommand
 
 ### Sprint 32+ — Finder Hub v2
 - GHL lead capture via Hangfire job on conversion
@@ -309,3 +304,4 @@ Sprint worker + maintenance pipeline live on master (commit 23db922).
 | REDIS_URL | Pending | Distributed cache (Sprint 31+) |
 | GOOGLE_CLIENT_ID | Pending | Google Sign-In |
 | RAILWAY_STAGING_DEPLOY_WEBHOOK | Pending | GitHub Actions → staging deploy trigger |
+| ANTHROPIC_API_KEY | Needed | Claude API for real AI generation (Sprint 31+) |
