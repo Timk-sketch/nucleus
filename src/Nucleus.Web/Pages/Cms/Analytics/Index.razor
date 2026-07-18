@@ -1,0 +1,223 @@
+@page "/cms/analytics"
+@attribute [Authorize]
+@layout CmsLayout
+@inject HttpClient Http
+
+<PageTitle>Analytics — CMS Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Site Analytics</h1>
+        <p class="page-subtitle">Page visit counts and traffic trends for your CMS sites.</p>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+        <select class="form-input" style="width:auto;font-size:13px;padding:6px 12px;"
+                @bind="_days" @bind:after="LoadAnalytics">
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 90 days</option>
+        </select>
+    </div>
+</div>
+
+@if (_brands.Count == 0 && !_loading)
+{
+    <div class="empty-state">No brands yet. <a href="/brands">Add a brand</a> to view analytics.</div>
+}
+else
+{
+    <div class="brand-pill-row">
+        @foreach (var b in _brands)
+        {
+            <button class="brand-pill-btn @(_selectedBrand?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                    @onclick="() => SelectBrand(b)">
+                <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+                @b.Name
+            </button>
+        }
+    </div>
+}
+
+@if (_error != null)
+{
+    <div class="alert-error">@_error</div>
+}
+
+@if (_selectedBrand != null)
+{
+    @if (_loading)
+    {
+        <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+    }
+    else if (_analytics != null)
+    {
+        <!-- Summary stat cards -->
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px;">
+            <div class="stat-card stat-card--sm">
+                <div class="stat-label">Total Visits</div>
+                <div class="stat-value" style="color:var(--hub-color)">@_analytics.TotalVisits</div>
+            </div>
+            <div class="stat-card stat-card--sm">
+                <div class="stat-label">Unique Pages</div>
+                <div class="stat-value">@_analytics.UniquePages</div>
+            </div>
+            <div class="stat-card stat-card--sm">
+                <div class="stat-label">Time Window</div>
+                <div class="stat-value" style="font-size:14px;">Last @_days days</div>
+            </div>
+        </div>
+
+        <!-- Daily chart (simple bar representation) -->
+        @if (_analytics.DailyVisits.Count > 0)
+        {
+            <div style="margin-bottom:28px;">
+                <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">Daily Visits</h3>
+                <div style="display:flex;align-items:flex-end;gap:4px;height:80px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:8px;padding:12px;">
+                    @{
+                        var maxVisits = _analytics.DailyVisits.Max(d => d.Visits);
+                        maxVisits = maxVisits == 0 ? 1 : maxVisits;
+                    }
+                    @foreach (var day in _analytics.DailyVisits)
+                    {
+                        var heightPct = (int)((double)day.Visits / maxVisits * 100);
+                        <div title="@day.Date.ToString("MMM d"): @day.Visits visits"
+                             style="flex:1;min-width:4px;background:var(--hub-color);border-radius:2px 2px 0 0;
+                                    height:@(heightPct)%;opacity:0.8;transition:opacity 0.15s;cursor:default;"
+                             onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'">
+                        </div>
+                    }
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--color-muted);margin-top:4px;padding:0 12px;">
+                    <span>@_analytics.DailyVisits.First().Date.ToString("MMM d")</span>
+                    <span>@_analytics.DailyVisits.Last().Date.ToString("MMM d")</span>
+                </div>
+            </div>
+        }
+
+        <!-- Top pages table -->
+        @if (_analytics.TopPages.Count > 0)
+        {
+            <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">Top Pages</h3>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Page Slug</th>
+                            <th>Visits</th>
+                            <th>Share</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @{
+                            int rank = 1;
+                            foreach (var tp in _analytics.TopPages)
+                            {
+                                var share = _analytics.TotalVisits > 0
+                                    ? (int)((double)tp.Visits / _analytics.TotalVisits * 100)
+                                    : 0;
+                                <tr>
+                                    <td style="color:var(--color-muted);font-size:12px;">@rank</td>
+                                    <td style="font-family:monospace;font-size:13px;color:var(--hub-color);">
+                                        /@tp.Slug
+                                    </td>
+                                    <td style="font-weight:600;">@tp.Visits</td>
+                                    <td>
+                                        <div style="display:flex;align-items:center;gap:8px;">
+                                            <div style="flex:1;height:6px;background:var(--color-border);border-radius:3px;">
+                                                <div style="width:@(share)%;height:100%;background:var(--hub-color);border-radius:3px;"></div>
+                                            </div>
+                                            <span style="font-size:12px;color:var(--color-muted);min-width:32px;">@share%</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                                rank++;
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <div class="empty-state">
+                No page visits recorded yet in this time window.
+                <br />
+                <small style="color:var(--color-muted);">
+                    Visits are tracked when public pages are served via GET /cms/{slug}.
+                </small>
+            </div>
+        }
+    }
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private SiteAnalytics? _analytics;
+    private bool _loading;
+    private string? _error;
+    private int _days = 30;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _error = null;
+        await LoadAnalytics();
+    }
+
+    private async Task LoadAnalytics()
+    {
+        if (_selectedBrand is null) return;
+        _loading = true;
+        _analytics = null;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<SiteAnalytics>>(
+                $"api/cms/analytics?brandId={_selectedBrand.Id}&days={_days}");
+            _analytics = resp?.Data;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    // ── DTOs ─────────────────────────────────────────────────────────────────
+
+    private class BrandItem
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string PrimaryColor { get; set; } = "#0ea5e9";
+    }
+
+    private class SiteAnalytics
+    {
+        public Guid BrandId { get; set; }
+        public string BrandName { get; set; } = "";
+        public int TotalVisits { get; set; }
+        public int UniquePages { get; set; }
+        public List<PageSummary> TopPages { get; set; } = [];
+        public List<DailyCount> DailyVisits { get; set; } = [];
+    }
+
+    private class PageSummary
+    {
+        public string Slug { get; set; } = "";
+        public int Visits { get; set; }
+    }
+
+    private class DailyCount
+    {
+        public DateOnly Date { get; set; }
+        public int Visits { get; set; }
+    }
+
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

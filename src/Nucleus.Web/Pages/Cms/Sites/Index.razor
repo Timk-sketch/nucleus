@@ -1,0 +1,260 @@
+@page "/cms/sites"
+@attribute [Authorize]
+@layout CmsLayout
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>Sites — CMS Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Sites</h1>
+        <p class="page-subtitle">Deploy your published pages and monitor cache status for each brand.</p>
+    </div>
+</div>
+
+@if (_brands.Count == 0 && !_loading)
+{
+    <div class="empty-state">No brands yet. <a href="/brands">Add a brand</a> to start deploying pages.</div>
+}
+else
+{
+    <div class="brand-pill-row">
+        @foreach (var b in _brands)
+        {
+            <button class="brand-pill-btn @(_selectedBrand?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                    @onclick="() => SelectBrand(b)">
+                <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+                @b.Name
+            </button>
+        }
+    </div>
+}
+
+@if (_error != null)
+{
+    <div class="alert-error">@_error</div>
+}
+@if (_successMsg != null)
+{
+    <div class="alert-success">@_successMsg</div>
+}
+
+@if (_selectedBrand != null)
+{
+    @if (_loading)
+    {
+        <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+    }
+    else if (_status != null)
+    {
+        <!-- Summary stat cards -->
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px;">
+            <div class="stat-card stat-card--sm">
+                <div class="stat-label">Published Pages</div>
+                <div class="stat-value" style="color:var(--hub-color)">@_status.PublishedPageCount</div>
+            </div>
+            <div class="stat-card stat-card--sm">
+                <div class="stat-label">Cached Pages</div>
+                <div class="stat-value">@_status.CachedPageCount</div>
+            </div>
+            <div class="stat-card stat-card--sm">
+                <div class="stat-label">Last Deploy</div>
+                <div class="stat-value" style="font-size:14px;">
+                    @(_status.LastDeployment != null
+                        ? _status.LastDeployment.DeployedAt?.ToString("MMM d, HH:mm") ?? "Running…"
+                        : "Never")
+                </div>
+            </div>
+            <div class="stat-card stat-card--sm">
+                <div class="stat-label">Last Status</div>
+                <div class="stat-value">
+                    @if (_status.LastDeployment != null)
+                    {
+                        <span class="status-badge status-badge--@DeployStatusClass(_status.LastDeployment.Status)">
+                            @_status.LastDeployment.Status
+                        </span>
+                    }
+                    else
+                    {
+                        <span style="color:var(--color-muted);">—</span>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Deploy button -->
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
+            <button class="btn-hub" @onclick="DeploySite" disabled="@_deploying">
+                @if (_deploying)
+                {
+                    <span><div class="spinner" style="display:inline-block;width:14px;height:14px;margin-right:6px;"></div>Deploying…</span>
+                }
+                else
+                {
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <polyline points="16 16 12 12 8 16"/>
+                        <line x1="12" y1="12" x2="12" y2="21"/>
+                        <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+                    </svg>
+                    <span>Deploy Site</span>
+                }
+            </button>
+            <p style="font-size:12px;color:var(--color-muted);">
+                Snaps all published pages into cache. Use after editing or publishing pages.
+            </p>
+        </div>
+
+        <!-- Deployment history -->
+        @if (_status.DeployHistory.Count > 0)
+        {
+            <h3 style="font-size:14px;font-weight:600;color:var(--color-text);margin-bottom:12px;">
+                Deploy History
+            </h3>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Started</th>
+                            <th>Pages</th>
+                            <th>Status</th>
+                            <th>Completed</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var dep in _status.DeployHistory)
+                        {
+                            <tr>
+                                <td style="font-size:12px;color:var(--color-muted);">
+                                    @dep.CreatedAt.ToString("MMM d, yyyy HH:mm")
+                                </td>
+                                <td style="font-weight:600;">@dep.PageCount</td>
+                                <td>
+                                    <span class="status-badge status-badge--@DeployStatusClass(dep.Status)">
+                                        @dep.Status
+                                    </span>
+                                </td>
+                                <td style="font-size:12px;color:var(--color-muted);">
+                                    @(dep.DeployedAt.HasValue ? dep.DeployedAt.Value.ToString("HH:mm:ss") : "—")
+                                </td>
+                                <td style="font-size:12px;color:var(--color-muted);max-width:300px;">
+                                    @dep.Notes
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <div class="empty-state">
+                No deployments yet.
+                <br/>
+                <button class="btn-hub" style="margin-top:12px;" @onclick="DeploySite">
+                    Run first deploy →
+                </button>
+            </div>
+        }
+    }
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private SiteStatus? _status;
+    private bool _loading, _deploying;
+    private string? _error, _successMsg;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _error = _successMsg = null;
+        await LoadStatus();
+    }
+
+    private async Task LoadStatus()
+    {
+        if (_selectedBrand is null) return;
+        _loading = true;
+        _status = null;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<SiteStatus>>(
+                $"api/cms/status?brandId={_selectedBrand.Id}");
+            _status = resp?.Data;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task DeploySite()
+    {
+        if (_selectedBrand is null) return;
+        _error = _successMsg = null;
+        _deploying = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("api/cms/deploy",
+                new { BrandId = _selectedBrand.Id });
+            if (resp.IsSuccessStatusCode)
+            {
+                _successMsg = "Site deployed successfully! All published pages are now cached.";
+                await LoadStatus();
+            }
+            else
+            {
+                _error = $"Deploy failed: {await resp.Content.ReadAsStringAsync()}";
+            }
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _deploying = false; }
+    }
+
+    private static string DeployStatusClass(string status) => status switch
+    {
+        "complete" => "success",
+        "failed"   => "danger",
+        "running"  => "warning",
+        _          => "muted",
+    };
+
+    // ── DTOs ─────────────────────────────────────────────────────────────────
+
+    private class BrandItem
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string PrimaryColor { get; set; } = "#0ea5e9";
+    }
+
+    private class SiteStatus
+    {
+        public Guid BrandId { get; set; }
+        public string BrandName { get; set; } = "";
+        public int PublishedPageCount { get; set; }
+        public int CachedPageCount { get; set; }
+        public DeploymentRow? LastDeployment { get; set; }
+        public List<DeploymentRow> DeployHistory { get; set; } = [];
+    }
+
+    private class DeploymentRow
+    {
+        public Guid Id { get; set; }
+        public int PageCount { get; set; }
+        public string Status { get; set; } = "";
+        public DateTimeOffset? DeployedAt { get; set; }
+        public string? Notes { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+    }
+
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

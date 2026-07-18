@@ -40,6 +40,12 @@ public class NucleusDbContext(
     public DbSet<DesignAsset> DesignAssets => Set<DesignAsset>();
     public DbSet<VideoAsset> VideoAssets => Set<VideoAsset>();
 
+    // Sprint 29 — CMS Renderer Hub
+    public DbSet<SiteDomain> SiteDomains => Set<SiteDomain>();
+    public DbSet<SiteDeployment> SiteDeployments => Set<SiteDeployment>();
+    public DbSet<PageCache> PageCaches => Set<PageCache>();
+    public DbSet<SiteVisit> SiteVisits => Set<SiteVisit>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -371,6 +377,64 @@ public class NucleusDbContext(
         });
 
         // ── End Sprint 28 ─────────────────────────────────────────────────
+
+        // ── Sprint 29: CMS Renderer Hub entities ──────────────────────────
+
+        builder.Entity<SiteDomain>(e =>
+        {
+            e.ToTable("site_domains");
+            e.HasKey(d => d.Id);
+            e.HasIndex(d => d.TenantId);
+            e.HasIndex(d => new { d.TenantId, d.BrandId });
+            // Hostname must be globally unique across all tenants — used for Host-header routing
+            e.HasIndex(d => d.Hostname).IsUnique();
+            e.HasIndex(d => new { d.BrandId, d.IsPrimary });
+            e.Property(d => d.Hostname).HasMaxLength(300).IsRequired();
+            e.HasOne(d => d.Brand).WithMany().HasForeignKey(d => d.BrandId);
+        });
+
+        builder.Entity<SiteDeployment>(e =>
+        {
+            e.ToTable("site_deployments");
+            e.HasKey(d => d.Id);
+            e.HasIndex(d => d.TenantId);
+            e.HasIndex(d => new { d.TenantId, d.BrandId });
+            e.HasIndex(d => new { d.BrandId, d.CreatedAt });
+            e.Property(d => d.Status).HasMaxLength(50).HasDefaultValue("pending");
+            e.Property(d => d.Notes).HasMaxLength(2000);
+            e.HasOne(d => d.Brand).WithMany().HasForeignKey(d => d.BrandId);
+        });
+
+        builder.Entity<PageCache>(e =>
+        {
+            e.ToTable("page_caches");
+            e.HasKey(c => c.Id);
+            e.HasIndex(c => c.TenantId);
+            e.HasIndex(c => new { c.TenantId, c.BrandId });
+            // BrandId + Slug is the lookup key — must be unique per brand
+            e.HasIndex(c => new { c.BrandId, c.Slug }).IsUnique();
+            e.HasIndex(c => c.InvalidatedAt);
+            e.Property(c => c.Slug).HasMaxLength(300).IsRequired();
+            e.Property(c => c.Etag).HasMaxLength(100).IsRequired();
+            e.HasOne(c => c.Brand).WithMany().HasForeignKey(c => c.BrandId);
+        });
+
+        builder.Entity<SiteVisit>(e =>
+        {
+            e.ToTable("site_visits");
+            e.HasKey(v => v.Id);
+            e.HasIndex(v => v.TenantId);
+            e.HasIndex(v => new { v.TenantId, v.BrandId });
+            e.HasIndex(v => new { v.BrandId, v.Slug });
+            e.HasIndex(v => new { v.BrandId, v.VisitedAt });
+            e.Property(v => v.Slug).HasMaxLength(300).IsRequired();
+            e.Property(v => v.Referrer).HasMaxLength(1000);
+            e.Property(v => v.UserAgent).HasMaxLength(500);
+            e.Property(v => v.IpHash).HasMaxLength(64);
+            e.HasOne(v => v.Brand).WithMany().HasForeignKey(v => v.BrandId);
+        });
+
+        // ── End Sprint 29 ─────────────────────────────────────────────────
 
         // Global tenant query filter on all TenantEntity subclasses
         var tenantId = tenantService.TenantId;

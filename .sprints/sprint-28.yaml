@@ -1,7 +1,7 @@
 sprint: 28
 name: Studio Hub
 namespace: StudioHub
-status: in_progress
+status: complete
 
 entities:
   - name: WebsitePage

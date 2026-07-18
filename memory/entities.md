@@ -1,6 +1,6 @@
 # Nucleus — Domain Entities Reference
 
-Last updated: Sprint 28
+Last updated: Sprint 29
 
 ## Base Classes
 
@@ -42,6 +42,10 @@ public abstract class TenantEntity {
 | WebsitePage | TenantEntity | website_pages | BrandId, Slug, Title, PageType, HtmlContent, SeoTitle, MetaDescription, OgImage, Status, PublishedAt, SchemaJson (jsonb) | 28 |
 | DesignAsset | TenantEntity | design_assets | BrandId, Name, AssetType, Url, Width, Height, FileSize, UploadedAt, PromptUsed, MimeType | 28 |
 | VideoAsset | TenantEntity | video_assets | BrandId, Name, Url, ThumbnailUrl, DurationSeconds, Platform, UploadedAt, Description | 28 |
+| SiteDomain | TenantEntity | site_domains | BrandId, Hostname (globally unique), IsPrimary, SslVerified, VerifiedAt | 29 |
+| SiteDeployment | TenantEntity | site_deployments | BrandId, DeployedBy, PageCount, Status, DeployedAt, Notes | 29 |
+| PageCache | TenantEntity | page_caches | BrandId, Slug (unique per brand), RenderedHtml, Etag, CachedAt, InvalidatedAt | 29 |
+| SiteVisit | TenantEntity | site_visits | BrandId, Slug, Referrer, UserAgent, IpHash (SHA-256), VisitedAt | 29 |
 
 ## Key Indexes (all entities have TenantId index + composite (TenantId, BrandId))
 
@@ -61,6 +65,10 @@ public abstract class TenantEntity {
 - `website_pages`: (BrandId, Status), **(BrandId, Slug) UNIQUE**
 - `design_assets`: (BrandId, AssetType), (BrandId, UploadedAt)
 - `video_assets`: (BrandId, Platform), (BrandId, UploadedAt)
+- `site_domains`: **Hostname GLOBALLY UNIQUE** (IgnoreQueryFilters), (BrandId, IsPrimary)
+- `page_caches`: **(BrandId, Slug) UNIQUE**, InvalidatedAt
+- `site_visits`: (BrandId, Slug), (BrandId, VisitedAt)
+- `site_deployments`: (BrandId, CreatedAt)
 
 ## EF Configuration Notes
 - `Brand.WpAppPassword`, `GhlApiKey`, `DripApiToken`, `SendgridApiKey` → encrypted at rest via EncryptedStringConverter
@@ -70,3 +78,5 @@ public abstract class TenantEntity {
 - `AuditLog.Changes` → jsonb
 - `Brand.ServicesProvisioned` → jsonb
 - Global TenantId query filter applied to all TenantEntity subclasses in OnModelCreating
+- `SiteDomain.Hostname` unique index uses `IgnoreQueryFilters()` in application code for global lookup
+- `PageCache` and `SiteVisit` use `IgnoreQueryFilters()` in public renderer (no auth context)

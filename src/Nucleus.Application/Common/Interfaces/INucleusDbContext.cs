@@ -32,5 +32,11 @@ public interface INucleusDbContext
     DbSet<DesignAsset> DesignAssets { get; }
     DbSet<VideoAsset> VideoAssets { get; }
 
+    // Sprint 29 — CMS Renderer Hub
+    DbSet<SiteDomain> SiteDomains { get; }
+    DbSet<SiteDeployment> SiteDeployments { get; }
+    DbSet<PageCache> PageCaches { get; }
+    DbSet<SiteVisit> SiteVisits { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

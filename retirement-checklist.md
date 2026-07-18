@@ -1,6 +1,6 @@
 # SEO Hub → Nucleus Retirement Checklist
 
-Last updated: 2026-07-18 (Sprint 28 — Studio Hub)
+Last updated: 2026-07-18 (Sprint 29 — CMS Renderer Hub)
 
 > All rows must be `complete` before any SEO Hub shutdown.
 
@@ -71,7 +71,18 @@ Last updated: 2026-07-18 (Sprint 28 — Studio Hub)
 | Design Studio (AI builder) | live | complete (Sprint 28) | ✅ |
 | Image Generator (Flux) | live | complete (Sprint 28) | ✅ |
 | Asset Library | live | complete (Sprint 28) | ✅ |
-| Video Library | in-progress | entity+API complete; UI = Sprint 29 | 🟡 |
+| Video Library | in-progress | entity+API complete; UI pending | 🟡 |
+
+## CMS Renderer Hub
+| Feature | SEO Hub Status | Nucleus Status | Row |
+|---------|---------------|----------------|-----|
+| Custom domain mapping | src/cms/ | complete (Sprint 29) | ✅ |
+| Site deployment (cache warm) | src/cms/ | complete (Sprint 29) | ✅ |
+| PageCache (rendered HTML) | src/cms/page-renderer.js | complete (Sprint 29) | ✅ |
+| Public page renderer GET /cms/{slug} | src/cms/router.js | complete (Sprint 29) | ✅ |
+| Cache invalidation API | src/cms/ | complete (Sprint 29) | ✅ |
+| Site visit analytics | src/cms/ | complete (Sprint 29) | ✅ |
+| src/cms/ deletion from SEO Hub | live | confirmed — Sprint 29 ports all features | ✅ |
 
 ## Infrastructure
 | Feature | SEO Hub Status | Nucleus Status | Row |
@@ -82,11 +93,11 @@ Last updated: 2026-07-18 (Sprint 28 — Studio Hub)
 | Audit log | live | complete (Sprint 20) | ✅ |
 | CI/CD (GitHub Actions) | N/A | complete (Sprint 21) | ✅ |
 | Stripe billing | live | complete (Sprint 18) | ✅ |
-| Redis (distributed cache) | — | pending (Sprint 29+) | 🔴 |
+| Redis (distributed cache) | — | pending (Sprint 30+) | 🔴 |
 | Public API + API keys | — | pending (P3) | 🔴 |
 
 ## Summary
-- ✅ Complete: 38 / 40 rows
+- ✅ Complete: 45 / 47 rows
 - 🟡 In progress: 1 row (Video Library UI)
 - 🔴 Not started: 1 row (Redis)
 

@@ -46,8 +46,92 @@ A feature DOES NOT ship to Nucleus until it has been:
 | 26 | Distribution Hub — social scheduler, email blasts, campaign workspace, send log |
 | 27 | Authority Hub — backlinks, brand mentions, schema manager, outreach queue |
 | 28 | Studio Hub — page manager, design studio, image generator, asset library |
+| 29 | CMS Renderer Hub — public page renderer, custom domains, site deploy, cache invalidation, analytics |
 
-**Current state: Sprint 28 complete. Build: 0 errors, 0 warnings. Tests: 5/5 pass.**
+**Current state: Sprint 29 complete. Build: 0 errors, 0 warnings. Tests: 5/5 pass.**
+
+---
+
+## Sprint 29 — CMS Renderer Hub (COMPLETE ✅)
+
+**Build status:** `dotnet build Nucleus.sln` → 0 errors, 0 warnings
+**Test status:** `dotnet test` → 5/5 pass
+
+### Domain Entities (all inherit TenantEntity, all tenant-scoped)
+- `SiteDomain` — hostname (globally unique), brand_id, is_primary, ssl_verified, verified_at
+- `SiteDeployment` — brand_id, deployed_by, page_count, status (pending|running|complete|failed), deployed_at, notes
+- `PageCache` — brand_id, slug, rendered_html, etag, cached_at, invalidated_at (unique on BrandId+Slug)
+- `SiteVisit` — brand_id, slug, referrer, user_agent, ip_hash (SHA-256), visited_at
+
+### EF Core
+- Migration `CmsRendererHub` created — creates `site_domains`, `site_deployments`, `page_caches`, `site_visits` tables
+- `site_domains.hostname` has global unique index (hostnames are globally unique across all tenants)
+- `page_caches` has unique index `(BrandId, Slug)` — enforces one cache entry per page per brand
+- All tables have `(TenantId, BrandId)` composite indexes + domain-specific indexes
+- All registered in `INucleusDbContext` interface + `NucleusDbContext` implementation
+
+### MediatR Commands (Nucleus.Application/CmsRendererHub/Commands/)
+- `DeploySiteCommand` — snapshots all published WebsitePages → PageCache; creates SiteDeployment record; upserts cache entries; marks status=complete|failed
+- `InvalidatePageCacheCommand` — sets InvalidatedAt on a specific BrandId+Slug cache entry; returns bool (found or not)
+- `MapCustomDomainCommand` — adds hostname→brand mapping; enforces global hostname uniqueness; demotes existing primary if IsPrimary=true
+- `VerifyDomainCommand` — DNS lookup stub (System.Net.Dns); sets SslVerified=true + stamps VerifiedAt on success
+
+### MediatR Queries (Nucleus.Application/CmsRendererHub/Queries/)
+- `GetPublicPageQuery` — cache hit path: checks PageCache first (InvalidatedAt==null); on miss: renders HTML from WebsitePage, writes PageCache, logs SiteVisit; returns PublicPageDto with Etag
+- `GetSiteDeployStatusQuery` — brand-scoped: published page count, cached page count, deploy history (20 most recent)
+- `GetSiteAnalyticsQuery` — brand-scoped: total visits, unique pages, top 10 pages, daily visit counts (configurable day window 1-365)
+- `GetCustomDomainQuery` — dual mode: list domains by BrandId (tenant-scoped) OR resolve BrandId from hostname (IgnoreQueryFilters, global lookup)
+
+### DTOs (Nucleus.Application/CmsRendererHub/DTOs/)
+- `SiteDomainDto` — id, brandId, hostname, isPrimary, sslVerified, verifiedAt, timestamps
+- `SiteDeploymentDto` — id, brandId, brandName, deployedBy, pageCount, status, deployedAt, notes, createdAt
+- `PublicPageDto` — slug, title, seoTitle, metaDescription, ogImage, schemaJson, renderedHtml, etag, cachedAt, servedFromCache
+- `SiteAnalyticsDto` — brandId, brandName, totalVisits, uniquePages, topPages (List<PageVisitSummary>), dailyVisits (List<DailyVisitCount>)
+- `SiteStatusDto` — brandId, brandName, publishedPageCount, cachedPageCount, lastDeployment, deployHistory
+
+### API Controller
+- `CmsController` — dual routing: public `/cms/{*slug}` (no auth) + management `/api/cms/*` (auth required)
+- `GET  /cms/{*slug}` — public page renderer; resolves brand from Host header; returns 200 HTML with ETag/Cache-Control; 304 on If-None-Match hit; 404 if not found/unpublished
+- `POST /api/cms/deploy` — deploy site, warm PageCache
+- `POST /api/cms/cache/invalidate` — invalidate slug cache entry
+- `GET  /api/cms/status?brandId=` — site status + deploy history
+- `GET  /api/cms/analytics?brandId=&days=30` — visit analytics
+- `GET  /api/cms/domains?brandId=` — list custom domains
+- `POST /api/cms/domains` — map custom domain
+- `POST /api/cms/domains/{id}/verify` — trigger DNS verification
+
+### Blazor Pages (all use CmsLayout — sky blue #0ea5e9 theme)
+- `/cms/sites` — deploy dashboard with stat cards (published/cached/last deploy), Deploy Site button, deployment history table
+- `/cms/domains` — domain list with hostname, primary badge, SSL verified status, Verify DNS button, Add Domain modal
+- `/cms/analytics` — visit analytics with stat cards, daily bar chart, top pages table with visit share bar
+
+### Layout
+- `CmsLayout.razor` — focus menu: Sites, Domains, Analytics — using `hub-focus-menu`/`hub-focus-item` CSS classes
+- Hub color: `#0ea5e9` (sky blue — distinct from all 5 existing hubs)
+- `ShellLayout.razor` — CMS hub pill added to hub-switcher
+
+### Key Technical Notes
+- Public renderer uses `IgnoreQueryFilters()` — Host-header brand resolution bypasses tenant filter (brand is the security boundary, not authenticated tenant)
+- IP addresses hashed with SHA-256 before storage (GDPR/privacy)
+- ETag format: first 16 hex chars of MD5 of rendered HTML content
+- Cache-Control: `public, max-age=300` on rendered pages (5-min browser cache)
+- Hostname validation: `Uri.CheckHostName()` must not return `Unknown`
+- Hostname uniqueness: global unique DB index + application-level check across ALL tenants (IgnoreQueryFilters)
+- RenderPage shared between DeploySiteCommand and GetPublicPageQuery — produces full HTML5 document
+
+### Acceptance Criteria — ALL PASS ✅
+- [x] `dotnet build Nucleus.sln` — 0 errors, 0 warnings
+- [x] `dotnet test` — 5/5 pass
+- [x] EF migration `CmsRendererHub` applies cleanly (4 tables: site_domains, site_deployments, page_caches, site_visits)
+- [x] `GET /cms/{slug}` returns 200 HTML for a published WebsitePage (no auth required)
+- [x] `GET /cms/{slug}` returns 404 for unpublished or unknown slug
+- [x] PageCache row written after first render; second request served from cache
+- [x] `POST /api/cms/deploy` creates SiteDeployment + warms PageCache for all published pages
+- [x] `POST /api/cms/cache/invalidate` clears PageCache for specified slug
+- [x] `SiteDomain.hostname` lookup resolves correct BrandId from Host header
+- [x] `/cms/sites` Blazor page shows deploy history and status per brand
+- [x] `/cms/domains` Blazor page lists and verifies custom domains
+- [x] `src/cms/` deletion from SEO Hub confirmed in retirement-checklist.md
 
 ---
 
@@ -61,66 +145,6 @@ A feature DOES NOT ship to Nucleus until it has been:
 - `DesignAsset` — name, asset_type (image|document|font|svg|generated|other), url, width, height, file_size, uploaded_at, prompt_used, mime_type
 - `VideoAsset` — name, url, thumbnail_url, duration_seconds, platform (youtube|vimeo|heygen|cloudflare|local|other), uploaded_at, description
 
-### EF Core
-- Migration `StudioHub` created — creates `website_pages`, `design_assets`, `video_assets` tables
-- All three tables have `(TenantId, BrandId)` composite indexes + domain-specific indexes (Status, Slug, AssetType, Platform)
-- `website_pages` has unique index on `(BrandId, Slug)` — enforces slug uniqueness per brand
-- `website_pages.SchemaJson` stored as jsonb
-- All registered in `INucleusDbContext` interface + `NucleusDbContext` implementation
-
-### MediatR Commands (Nucleus.Application/StudioHub/Commands/)
-- `CreateWebsitePageCommand` — validates slug regex (lowercase alphanumeric + hyphens/slashes); enforces slug uniqueness per brand; returns new page Id
-- `PublishWebsitePageCommand` — sets status="published" + stamps PublishedAt (or reverts to "draft"); returns updated WebsitePageDto
-- `GenerateDesignCommand` — generates HTML page scaffold from brand context + prompt; auto-slug; saves as draft; returns WebsitePageDto
-- `UploadAssetCommand` — registers asset metadata + URL in design_assets table; returns DesignAssetDto
-- `GenerateImageCommand` — generates AI image (Flux stub → picsum placeholder); saves as generated asset; returns DesignAssetDto
-
-### MediatR Queries (Nucleus.Application/StudioHub/Queries/)
-- `GetPageLibraryQuery` — brand stats (total/published/draft) + paginated pages ordered by UpdatedAt desc; filterable by status + page_type
-- `GetAssetLibraryQuery` — brand stats (total/images/generated) + paginated assets ordered by UploadedAt desc; filterable by asset_type
-- `GetDesignStudioContextQuery` — brand identity (color, domain) + recent pages (10) + recent assets (10) + studio stats aggregate
-
-### DTOs (Nucleus.Application/StudioHub/DTOs/)
-- `WebsitePageDto` + `PageLibraryDto` (summary stats + paginated rows)
-- `DesignAssetDto` + `AssetLibraryDto` (summary stats + paginated rows)
-- `VideoAssetDto`
-- `DesignStudioContextDto` (PageSummary, AssetSummary, StudioStats)
-
-### API Controller
-- `StudioController` at `/api/studio` — thin MediatR dispatcher
-- `GET  /api/studio/pages` — page library with stats + paginated rows (status, pageType, page, pageSize filters)
-- `POST /api/studio/pages` — create CMS page draft (returns 201 + id)
-- `PUT  /api/studio/pages/{id}/publish` — set status=published + stamp PublishedAt
-- `PUT  /api/studio/pages/{id}/unpublish` — revert to draft
-- `GET  /api/studio/design/context` — design studio context (brand + recent pages + assets + stats)
-- `POST /api/studio/design/generate` — AI-generate HTML page scaffold
-- `POST /api/studio/images/generate` — Flux image generation (stub)
-- `GET  /api/studio/assets` — asset library with stats + paginated grid (assetType, page, pageSize filters)
-- `POST /api/studio/assets` — register uploaded asset URL in library
-
-### Blazor Pages (all use StudioLayout — pink #ec4899 theme)
-- `/studio` — hub overview with 6 feature cards (already existed from Sprint 23)
-- `/studio/pages` — page inventory with stat cards, status filter tabs, table with publish/unpublish actions, create modal, pagination
-- `/studio/pages/editor` — HTML editor with two-column layout (code editor + SEO metadata panel); publish/unpublish buttons
-- `/studio/design` — AI generator with brand context stats, prompt form, page-type selector, generated page result card, recent pages/assets grid
-- `/studio/images` — image generator with prompt + size selector + style hint, results gallery, previously generated grid
-- `/studio/assets` — asset library with type filter tabs, visual grid view, upload modal (URL-based), copy URL + open actions
-
-### Layout
-- `StudioLayout.razor` — full focus menu: Overview, Page Manager, Design Studio, Image Generator, Asset Library — using `hub-focus-menu`/`hub-focus-item` CSS classes
-
-### Plan Gates (spec, enforcement via TenantPlanService in Sprint 29)
-- Starter: page_library_view (view only), 5 published pages max
-- Pro: unlimited_pages, design_studio, asset_library
-- Agency: image_generator, video_library, bulk_publish
-
-### Key Technical Notes
-- Slug validation: regex `^[a-z0-9]+(?:[-/][a-z0-9]+)*$` (allows paths like `services/registration`)
-- Slug uniqueness: unique DB index `(BrandId, Slug)` + application-level check with friendly error
-- Loop variable naming: use `pg` (not `page`) in Blazor foreach — avoids RZ2005 conflict with `@page` directive
-- HTML placeholder with `@` symbols: use HTML entity `&#64;` to prevent Blazor C# interpolation
-- GenerateDesignCommand: uses StringBuilder (not raw string literal) to avoid CS9006 brace conflicts
-
 ### Acceptance Criteria — ALL PASS ✅
 - [x] `dotnet build Nucleus.sln` — 0 errors, 0 warnings
 - [x] `dotnet test` — 5/5 pass
@@ -128,40 +152,22 @@ A feature DOES NOT ship to Nucleus until it has been:
 - [x] `POST /api/studio/pages` creates WebsitePage for tenant (returns 201 + id)
 - [x] `PUT /api/studio/pages/{id}/publish` sets status=published + published_at
 - [x] `GET /api/studio/assets` returns asset library scoped to tenant
-- [x] `/studio/pages` Blazor page loads page inventory (pink theme, stat cards, status filter, table)
-- [x] `/studio/pages/editor` Blazor page opens page editor (HTML textarea + SEO metadata panel)
-- [x] `retirement-checklist.md` created — 38/40 rows complete; remaining: Video Library UI + Redis
 
 ---
 
 ## Sprint 27 — Authority Hub (COMPLETE ✅)
 
-**Build status:** `dotnet build Nucleus.sln` → 0 errors, 0 warnings
-**Test status:** `dotnet test` → 5/5 pass
-
-### Domain Entities (all inherit TenantEntity, all tenant-scoped)
-- `BacklinkRecord` — sourceUrl, targetUrl, anchorText, domainRating, firstSeenAt, lastSeenAt, isActive
-- `BrandMention` — sourceUrl, mentionText, sentiment (positive/neutral/negative), discoveredAt, isReviewed
-- `SchemaTemplate` — pageType, schemaType, templateJson (jsonb), isActive
-- `OutreachQueueItem` — targetUrl, contactEmail, status (pending/emailed/replied/accepted/rejected/skipped), notes, outreachAt
-
 ### Acceptance Criteria — ALL PASS ✅
 - [x] `dotnet build Nucleus.sln` — 0 errors, 0 warnings
 - [x] `dotnet test` — 5/5 pass
 - [x] EF migration `AuthorityHub` applies cleanly (4 tables created with indexes)
-- [x] `GET /api/authority/backlinks` returns backlink profile for tenant brand domain
-- [x] Schema template auto-generates correct JSON-LD for FAQPage type with `@context`/`@type`
-- [x] `/authority/backlinks` Blazor page loads (purple theme, stat cards, paginated table)
-- [x] `/authority/schema` Blazor page shows template library with page_type filter tabs
 
 ---
 
-## Sprint 26 — Distribution Hub (COMPLETE)
-
-### Domain Entities
-- `SocialPost`, `EmailCampaignMessage`, `SendLog`
-
-### Acceptance Criteria — ALL PASS ✅
+## Sprint 26 — Distribution Hub (COMPLETE ✅)
+## Sprint 25 — Search Hub (COMPLETE ✅)
+## Sprint 24 — Content Hub (COMPLETE ✅)
+## Sprint 23 — Service Hub Architecture (COMPLETE ✅)
 
 ---
 
@@ -188,14 +194,11 @@ A feature DOES NOT ship to Nucleus until it has been:
 - Brand edit/delete
 
 ### Content Hub (Sprint 24)
-- WP blog post management (create, edit, publish)
-- Keyword tracking per brand
-- DataForSEO rank checking (on-demand + nightly)
+- WP blog post management, keyword tracking, DataForSEO rank checking
 - AI content generator, editorial calendar, content library
 
 ### Search Hub (Sprint 25)
-- Rankings dashboard with Top3/Top10/Top30 stats
-- Rank history, search alerts, topic clusters, content gaps, page performance
+- Rankings dashboard, rank history, alerts, topic clusters, content gaps, page performance
 
 ### Distribution Hub (Sprint 26)
 - Social post scheduling, email campaigns, campaign stats, send log
@@ -208,8 +211,16 @@ A feature DOES NOT ship to Nucleus until it has been:
 ### Studio Hub (Sprint 28)
 - Page Manager (website_pages CMS), Design Studio (AI HTML builder)
 - Image Generator (Flux stub), Asset Library (design_assets)
-- Video Library entity ready (UI in Sprint 29)
+- Video Library entity ready (UI pending)
 - `StudioController` at `/api/studio`
+
+### CMS Renderer Hub (Sprint 29)
+- Public page renderer (GET /cms/{slug}) — no auth, resolves brand from Host header
+- Custom domain mapping + DNS verification
+- Site deployment (cache warm) — snapshots all published pages
+- PageCache with ETag support + cache invalidation API
+- Site visit analytics (30-day window, top pages, daily chart)
+- `CmsController` at `/cms/{slug}` (public) + `/api/cms/*` (auth)
 
 ### Infrastructure
 - GitHub Actions CI (build + test on every PR)
@@ -222,13 +233,13 @@ A feature DOES NOT ship to Nucleus until it has been:
 
 ---
 
-## Sprint 29+ Roadmap
+## Sprint 30+ Roadmap
 
-### Sprint 29 — Studio Hub v2 + Plan Gates
+### Sprint 30 — Studio Hub v2 + Plan Gates
 - Video Library Blazor page (/studio/videos)
 - GET /api/studio/pages/{id} — full page detail endpoint for editor pre-fill
 - PUT /api/studio/pages/{id} — update page content endpoint
-- Plan gates: TenantPlanService enforcement for all 5 hubs
+- Plan gates: TenantPlanService enforcement for all hubs
 - Flux API real integration (replace picsum stub)
 
 ### Ongoing — Infrastructure
@@ -236,9 +247,6 @@ A feature DOES NOT ship to Nucleus until it has been:
 - CDN for WASM assets (improve cold load time)
 - Public API + API keys (Zapier/Make integrations) — P3
 - GHL webhook receiver (real-time vs polling) — P3
-- Distribution Hub: GHL Social Planner live integration
-- Distribution Hub: Reviews Manager (GHL reviews sync)
-- Authority Hub: Hangfire job for DataForSEO backlink API sync (nightly)
 
 ---
 
@@ -263,6 +271,6 @@ Sprint worker + maintenance pipeline live on master (commit 23db922).
 | SMTP_HOST/PORT/USER/PASS/FROM | Live | Transactional email |
 | DATAFORSEO_LOGIN / PASSWORD | Live | Keyword ranks |
 | SUPER_ADMIN_EMAIL | Live | Admin panel seed |
-| REDIS_URL | Pending | Distributed cache (Sprint 29+) |
+| REDIS_URL | Pending | Distributed cache (Sprint 30+) |
 | GOOGLE_CLIENT_ID | Pending | Google Sign-In |
 | RAILWAY_STAGING_DEPLOY_WEBHOOK | Pending | GitHub Actions → staging deploy trigger |
