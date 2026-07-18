@@ -1,5 +1,6 @@
 sprint: 26
 name: Distribution Hub
+namespace: DistributionHub
 status: in_progress
 
 entities:

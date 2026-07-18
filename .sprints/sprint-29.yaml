@@ -1,5 +1,6 @@
 sprint: 29
 name: CMS Renderer Hub
+namespace: CmsRendererHub
 status: pending
 
 # Dependency: Sprint 28 (Studio Hub) must be complete.

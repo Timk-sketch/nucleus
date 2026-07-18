@@ -1,5 +1,6 @@
 sprint: 30
 name: Finder Hub (Quiz Builder)
+namespace: FinderHub
 status: pending
 
 # Ports the Service Finder / Quiz Builder from SEO Hub into Nucleus.

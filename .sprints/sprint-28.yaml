@@ -1,5 +1,6 @@
 sprint: 28
 name: Studio Hub
+namespace: StudioHub
 status: pending
 
 entities:

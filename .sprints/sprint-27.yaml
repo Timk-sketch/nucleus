@@ -1,5 +1,6 @@
 sprint: 27
 name: Authority Hub
+namespace: AuthorityHub
 status: pending
 
 entities:

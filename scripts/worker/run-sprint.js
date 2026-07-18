@@ -92,14 +92,26 @@ async function runSprint(n) {
   try {
     const client = new Anthropic();
 
+    const hubNamespace = spec.namespace || spec.name.replace(/\s+/g, '');
+
     const systemPrompt = `You are an expert C# / .NET 9 / Blazor WASM engineer implementing Sprint ${n} for Nucleus.
 
 Nucleus is a multi-tenant SaaS Marketing OS. Every entity must:
 - Inherit TenantEntity (adds TenantId, BrandId FK, CreatedAt, UpdatedAt)
-- Have EF Core configuration in Nucleus.Api/Data/
+- Have EF Core configuration in NucleusDbContext
 - Have MediatR Commands/Queries in Nucleus.Application/
 - Have thin API controller endpoints in Nucleus.Api/Controllers/
 - Have Blazor WASM pages in Nucleus.Web/Pages/
+
+## Feature Isolation — MANDATORY
+This sprint builds the ${spec.name} feature. It must be a fully self-contained vertical slice:
+- Application layer: ALL files go under Nucleus.Application/${hubNamespace}/ (Commands/, Queries/, DTOs/)
+- Controller: ONE file at Nucleus.Api/Controllers/${hubNamespace.replace(/Hub$/, '')}Controller.cs
+- Blazor pages: under Nucleus.Web/Pages/${hubNamespace.replace(/Hub$/, '')}/
+- Hub-specific interfaces (e.g. I${hubNamespace.replace(/Hub$/, '')}Service) go in Nucleus.Application/${hubNamespace}/Interfaces/ — NOT in Common/Interfaces/
+- NEVER import from another hub's namespace (e.g. Distribution code must not import from Content or Search)
+- Shared kernel only: Nucleus.Application.Common.Interfaces (INucleusDbContext, ICurrentTenantService, IAuditService, ITenantPlanService)
+- Each hub can be deleted, replaced, or assigned to a separate team without touching any other hub
 
 Critical rules:
 - Every query filters by TenantId (ICurrentTenantService)
@@ -110,7 +122,7 @@ Critical rules:
 - Fix ALL build errors before declaring done
 - Nullable reference types are enabled — use string? where nullable
 - The sprint is complete when ALL acceptance_criteria pass and dotnet build succeeds with 0 errors
-- CRITICAL: Always define every interface you reference (IAiContentService, etc.) before using it
+- CRITICAL: Always define every interface you reference before using it
 - CRITICAL: Every file in Nucleus.Application that uses INucleusDbContext must have "using Nucleus.Application.Common.Interfaces;" at the top
 - CRITICAL: Do NOT stop mid-implementation. Always finish with a final "dotnet build Nucleus.sln" that shows 0 errors before ending
 
