@@ -37,9 +37,11 @@ export async function deploy(sprintNumber, dryRun = false) {
   git(`push origin HEAD:master`);
   console.log(`[deployer] Pushed to master — prod deploy triggered`);
 
-  // 5. Wait for prod health
+  // 5. Wait for prod health — Railway .NET cold deploys take 5-8 min
   if (!dryRun) {
-    await pollHealth(`${PROD_URL}/health`, 'production', 300_000);
+    console.log('[deployer] Waiting 60s for Railway prod deploy to start...');
+    await sleep(60_000);
+    await pollHealth(`${PROD_URL}/health`, 'production', 600_000);
   }
 
   console.log(`[deployer] Sprint ${sprintNumber} deployed to production: ${PROD_URL}`);
