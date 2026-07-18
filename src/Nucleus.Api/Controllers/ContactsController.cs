@@ -13,7 +13,7 @@ namespace Nucleus.Api.Controllers;
 [Route("api/v1/brands/{brandId:guid}/contacts")]
 [Authorize]
 [Produces("application/json")]
-public class ContactsController(NucleusDbContext db, ILogger<ContactsController> logger) : ControllerBase
+public class ContactsController(NucleusDbContext db) : ControllerBase
 {
     private Guid CurrentTenantId =>
         Guid.Parse(User.FindFirstValue("tenant_id") ?? Guid.Empty.ToString());

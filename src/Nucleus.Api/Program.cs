@@ -79,7 +79,6 @@ static string ConvertPostgresUri(string uri)
         Username = username,
         Password = password,
         SslMode = Npgsql.SslMode.Prefer,
-        TrustServerCertificate = true,
     };
     return csb.ConnectionString;
 }
@@ -180,7 +179,7 @@ builder.Services.AddValidatorsFromAssembly(typeof(Nucleus.Application.Behaviors.
 // Supavisor URL format:
 //   postgresql://postgres.[project-ref]:[password]@aws-0-us-east-1.pooler.supabase.com:6543/postgres
 var hangfireConnStr = builder.Configuration["HANGFIRE_CONNECTION_STRING"];
-// Railway/Supabase provide postgres:// URI format — convert to Npgsql key-value format.
+// Railway/Supabase provide postgres:// URI format â€” convert to Npgsql key-value format.
 if (!string.IsNullOrEmpty(hangfireConnStr) &&
     (hangfireConnStr.StartsWith("postgres://") || hangfireConnStr.StartsWith("postgresql://")))
 {

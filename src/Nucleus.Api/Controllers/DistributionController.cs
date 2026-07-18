@@ -1,7 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Nucleus.Application.Common.Interfaces;
 using Nucleus.Application.Distribution.Commands;
 using Nucleus.Application.Distribution.Queries;
 
@@ -9,7 +8,7 @@ namespace Nucleus.Api.Controllers;
 
 /// <summary>
 /// Distribution Hub endpoints — social scheduling, email campaigns, send log.
-/// All endpoints are tenant-scoped via JWT claims.
+/// All endpoints are tenant-scoped via JWT claims (ICurrentTenantService injected in handlers).
 ///
 /// Social:   POST   /api/distribution/social          — schedule a post
 ///           GET    /api/distribution/social?brandId  — get social schedule
@@ -23,7 +22,7 @@ namespace Nucleus.Api.Controllers;
 [Route("api/distribution")]
 [Authorize]
 [Produces("application/json")]
-public class DistributionController(IMediator mediator, ICurrentTenantService tenant) : ControllerBase
+public class DistributionController(IMediator mediator) : ControllerBase
 {
     // ─── Social Schedule ──────────────────────────────────────────────────
 

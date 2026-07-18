@@ -3,13 +3,12 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nucleus.Application.AuthorityHub.Commands;
 using Nucleus.Application.AuthorityHub.Queries;
-using Nucleus.Application.Common.Interfaces;
 
 namespace Nucleus.Api.Controllers;
 
 /// <summary>
 /// Authority Hub endpoints — backlinks, brand mentions, schema templates, outreach queue.
-/// All endpoints are tenant-scoped via JWT claims.
+/// All endpoints are tenant-scoped via JWT claims (ICurrentTenantService injected in handlers).
 ///
 /// Backlinks:  GET  /api/authority/backlinks?brandId=&amp;activeOnly=&amp;page=&amp;pageSize=
 ///             POST /api/authority/backlinks/sync
@@ -25,7 +24,7 @@ namespace Nucleus.Api.Controllers;
 [Route("api/authority")]
 [Authorize]
 [Produces("application/json")]
-public class AuthorityController(IMediator mediator, ICurrentTenantService tenant) : ControllerBase
+public class AuthorityController(IMediator mediator) : ControllerBase
 {
     // ─── Backlinks ────────────────────────────────────────────────────────
 

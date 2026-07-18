@@ -1,13 +1,12 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
-using Nucleus.Infrastructure.Data;
 
 namespace Nucleus.Api.Controllers;
 
 [ApiController]
 [Route("health")]
-public class HealthController(NucleusDbContext db, IConfiguration config) : ControllerBase
+public class HealthController(IConfiguration config) : ControllerBase
 {
     [HttpGet]
     [AllowAnonymous]

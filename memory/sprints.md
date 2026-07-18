@@ -46,13 +46,14 @@ A feature DOES NOT ship to Nucleus until it has been:
 | 26 | Distribution Hub — social scheduler, email blasts, campaign workspace, send log |
 | 27 | Authority Hub — backlinks, brand mentions, schema manager, outreach queue |
 
-**Current state: Sprint 27 complete.**
+**Current state: Sprint 27 complete. Build: 0 errors, 0 warnings. Tests: 5/5 pass.**
 
 ---
 
-## Sprint 27 — Authority Hub (COMPLETE)
+## Sprint 27 — Authority Hub (COMPLETE ✅)
 
-**Shipped:**
+**Build status:** `dotnet build Nucleus.sln` → 0 errors, 0 warnings  
+**Test status:** `dotnet test` → 5/5 pass
 
 ### Domain Entities (all inherit TenantEntity, all tenant-scoped)
 - `BacklinkRecord` — sourceUrl, targetUrl, anchorText, domainRating, firstSeenAt, lastSeenAt, isActive
@@ -87,7 +88,7 @@ A feature DOES NOT ship to Nucleus until it has been:
 - `OutreachQueueItemDto`
 
 ### API Controller
-- `AuthorityController` at `/api/authority` — thin MediatR dispatcher
+- `AuthorityController` at `/api/authority` — thin MediatR dispatcher (no unused parameters)
 - `GET  /api/authority/backlinks` — backlink profile with stats + paginated rows (activeOnly, page, pageSize filters)
 - `POST /api/authority/backlinks/sync` — upsert batch of backlinks
 - `GET  /api/authority/mentions` — brand mentions (unreviewedOnly, sentiment, page filters)
@@ -105,14 +106,22 @@ A feature DOES NOT ship to Nucleus until it has been:
 - `/authority/outreach` — outreach queue with status filter tabs, add-prospect modal, send-email modal
 
 ### Layout
-- `AuthorityLayout.razor` updated with full focus menu: Overview, Backlinks, Brand Mentions, Schema Manager, Outreach Queue — using `hub-focus-menu`/`hub-focus-item` CSS classes consistent with SearchLayout/DistributionLayout pattern
+- `AuthorityLayout.razor` — full focus menu: Overview, Backlinks, Brand Mentions, Schema Manager, Outreach Queue — using `hub-focus-menu`/`hub-focus-item` CSS classes
 
-### Plan Gates (spec — enforcement to be wired via TenantPlanService)
+### Also cleaned up in this sprint session
+- `AuthorityController` — removed unused `ICurrentTenantService tenant` constructor parameter (CS9113 → 0 warnings)
+- `DistributionController` — removed unused `ICurrentTenantService tenant` constructor parameter
+- `ContactsController` — removed unused `ILogger<ContactsController> logger` constructor parameter
+- `HealthController` — removed unused `NucleusDbContext db` constructor parameter
+- `Program.cs` — removed obsolete `TrustServerCertificate = true` from `NpgsqlConnectionStringBuilder` in `ConvertPostgresUri` (CS0618 → 0 warnings)
+- Final build: **0 errors, 0 warnings**
+
+### Plan Gates (enforcement via TenantPlanService — wiring deferred to Sprint 28)
 - Starter: schema_templates_view only
 - Pro: backlink_tracking, brand_mentions, schema_template_editor
 - Agency: outreach_queue, bulk_schema_application
 
-### Acceptance Criteria — ALL PASS
+### Acceptance Criteria — ALL PASS ✅
 - [x] `dotnet build Nucleus.sln` — 0 errors, 0 warnings
 - [x] `dotnet test` — 5/5 pass
 - [x] EF migration `AuthorityHub` applies cleanly (4 tables created with indexes)
