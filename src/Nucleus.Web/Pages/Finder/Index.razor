@@ -1,0 +1,290 @@
+@page "/finder"
+@attribute [Authorize]
+@layout FinderLayout
+@inject HttpClient Http
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Finders — Finder Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Finders</h1>
+        <p class="page-subtitle">Build and manage product-finder quizzes for your brand.</p>
+    </div>
+    <button class="btn-hub" @onclick="ShowCreateModal">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        New Finder
+    </button>
+</div>
+
+@if (_brands.Count == 0 && !_loading)
+{
+    <div class="empty-state">No brands yet. <a href="/brands">Add a brand</a> to create finders.</div>
+}
+else
+{
+    <div class="brand-pill-row">
+        @foreach (var b in _brands)
+        {
+            <button class="brand-pill-btn @(_selectedBrand?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                    @onclick="() => SelectBrand(b)">
+                <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+                @b.Name
+            </button>
+        }
+    </div>
+}
+
+@if (_error != null)
+{
+    <div class="alert-error">@_error</div>
+}
+
+@if (_loading)
+{
+    <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+}
+else if (_finders.Count == 0 && _selectedBrand != null)
+{
+    <div class="empty-state">
+        No finders yet for <strong>@_selectedBrand.Name</strong>.
+        <br/>
+        <button class="btn-hub" style="margin-top:12px;" @onclick="ShowCreateModal">
+            Create your first finder →
+        </button>
+    </div>
+}
+else
+{
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Slug</th>
+                    <th>Status</th>
+                    <th>Steps</th>
+                    <th>Results</th>
+                    <th>Published</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var f in _finders)
+                {
+                    <tr>
+                        <td style="font-weight:600;">@f.Name</td>
+                        <td style="font-family:monospace;font-size:12px;color:var(--color-muted);">@f.Slug</td>
+                        <td>
+                            <span class="status-badge status-badge--@StatusClass(f.Status)">@f.Status</span>
+                        </td>
+                        <td style="font-weight:600;">@f.StepCount</td>
+                        <td style="font-weight:600;">@f.ResultCount</td>
+                        <td style="font-size:12px;color:var(--color-muted);">
+                            @(f.PublishedAt.HasValue ? f.PublishedAt.Value.ToString("MMM d, yyyy") : "—")
+                        </td>
+                        <td>
+                            <div style="display:flex;gap:8px;">
+                                <button class="btn-sm" @onclick="() => GoToBuilder(f.Id)">
+                                    Edit
+                                </button>
+                                <button class="btn-sm btn-sm--ghost" @onclick="() => GoToPreview(f.EmbedToken)">
+                                    Preview
+                                </button>
+                                @if (f.Status == "draft")
+                                {
+                                    <button class="btn-sm btn-sm--success" @onclick="() => PublishFinder(f.Id)">
+                                        Publish
+                                    </button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_showCreateModal)
+{
+    <div class="modal-backdrop" @onclick="HideCreateModal">
+        <div class="modal" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h3>New Finder</h3>
+                <button class="modal-close" @onclick="HideCreateModal">✕</button>
+            </div>
+            <div class="modal-body">
+                @if (_createError != null)
+                {
+                    <div class="alert-error" style="margin-bottom:12px;">@_createError</div>
+                }
+                <div class="form-field">
+                    <label class="form-label">Name *</label>
+                    <input class="form-input" @bind="_createName" placeholder="e.g. Vehicle Type Finder" />
+                </div>
+                <div class="form-field">
+                    <label class="form-label">Slug *</label>
+                    <input class="form-input" @bind="_createSlug" placeholder="e.g. vehicle-type-finder" />
+                    <span class="form-hint">Lowercase, hyphens only. Used in embed URLs.</span>
+                </div>
+                <div class="form-field">
+                    <label class="form-label">Intro Text</label>
+                    <textarea class="form-input" rows="2" @bind="_createIntroText"
+                              placeholder="Help users understand what this finder does…"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" @onclick="HideCreateModal">Cancel</button>
+                <button class="btn-hub" @onclick="CreateFinder" disabled="@_creating">
+                    @(_creating ? "Creating…" : "Create Finder")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private List<FinderRow> _finders = [];
+    private bool _loading;
+    private string? _error;
+
+    private bool _showCreateModal;
+    private string _createName = "";
+    private string _createSlug = "";
+    private string _createIntroText = "";
+    private bool _creating;
+    private string? _createError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count > 0)
+            await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _error = null;
+        await LoadFinders();
+    }
+
+    private async Task LoadFinders()
+    {
+        if (_selectedBrand is null) return;
+        _loading = true;
+        _finders = [];
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<List<FinderRow>>>(
+                $"api/finder?brandId={_selectedBrand.Id}");
+            _finders = resp?.Data ?? [];
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private void ShowCreateModal()
+    {
+        _createName = "";
+        _createSlug = "";
+        _createIntroText = "";
+        _createError = null;
+        _showCreateModal = true;
+    }
+
+    private void HideCreateModal() => _showCreateModal = false;
+
+    private async Task CreateFinder()
+    {
+        if (_selectedBrand is null) return;
+        if (string.IsNullOrWhiteSpace(_createName)) { _createError = "Name is required."; return; }
+        if (string.IsNullOrWhiteSpace(_createSlug)) { _createError = "Slug is required."; return; }
+
+        _creating = true;
+        _createError = null;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("api/finder", new
+            {
+                BrandId = _selectedBrand.Id,
+                Name = _createName.Trim(),
+                Slug = _createSlug.Trim().ToLowerInvariant(),
+                IntroText = string.IsNullOrWhiteSpace(_createIntroText) ? null : _createIntroText.Trim(),
+            });
+
+            if (resp.IsSuccessStatusCode)
+            {
+                var result = await resp.Content.ReadFromJsonAsync<ApiWrapper<IdResult>>();
+                _showCreateModal = false;
+                if (result?.Data?.Id != null)
+                    Nav.NavigateTo($"/finder/builder?id={result.Data.Id}");
+                else
+                    await LoadFinders();
+            }
+            else
+            {
+                var err = await resp.Content.ReadFromJsonAsync<ErrorResp>();
+                _createError = err?.Error ?? "Failed to create finder.";
+            }
+        }
+        catch (Exception ex) { _createError = ex.Message; }
+        finally { _creating = false; }
+    }
+
+    private async Task PublishFinder(Guid id)
+    {
+        try
+        {
+            var resp = await Http.PostAsync($"api/finder/{id}/publish", null);
+            if (resp.IsSuccessStatusCode)
+                await LoadFinders();
+            else
+                _error = "Failed to publish finder.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private void GoToBuilder(Guid id) => Nav.NavigateTo($"/finder/builder?id={id}");
+    private void GoToPreview(string embedToken) => Nav.NavigateTo($"/finder/preview?token={embedToken}");
+
+    private static string StatusClass(string status) => status switch
+    {
+        "published" => "success",
+        "archived"  => "muted",
+        _           => "warning",
+    };
+
+    // ── DTOs ─────────────────────────────────────────────────────────────────
+
+    private class BrandItem
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string PrimaryColor { get; set; } = "#7c3aed";
+    }
+
+    private class FinderRow
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string Slug { get; set; } = "";
+        public string Status { get; set; } = "draft";
+        public DateTimeOffset? PublishedAt { get; set; }
+        public string EmbedToken { get; set; } = "";
+        public int StepCount { get; set; }
+        public int ResultCount { get; set; }
+    }
+
+    private record ApiWrapper<T>(bool Success, T? Data);
+    private record IdResult(Guid Id);
+    private record ErrorResp(string? Error);
+}

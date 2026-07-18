@@ -1,0 +1,21 @@
+@page "/finder/builder/steps"
+@attribute [Authorize]
+@layout FinderLayout
+@inject NavigationManager Nav
+
+<PageTitle>Builder Steps — Finder Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Builder — Steps</h1>
+        <p class="page-subtitle">Use the main <a href="/finder/builder">Builder</a> page to add and manage steps. This page redirects there.</p>
+    </div>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        // Redirect to the main builder page
+        Nav.NavigateTo("/finder/builder");
+    }
+}

@@ -1,0 +1,529 @@
+@page "/finder/builder"
+@attribute [Authorize]
+@layout FinderLayout
+@inject HttpClient Http
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Finder Builder — Nucleus</PageTitle>
+
+@if (_loading)
+{
+    <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+}
+else if (_finder == null)
+{
+    <div class="empty-state">
+        Select a finder from the <a href="/finder">Finders list</a> to start building.
+    </div>
+}
+else
+{
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">@_finder.Name</h1>
+            <p class="page-subtitle">
+                <span class="status-badge status-badge--@StatusClass(_finder.Status)">@_finder.Status</span>
+                &nbsp;·&nbsp;
+                Embed token: <code style="font-size:11px;background:var(--color-surface-2);padding:2px 6px;border-radius:4px;">@_finder.EmbedToken</code>
+            </p>
+        </div>
+        <div style="display:flex;gap:8px;">
+            @if (_finder.Status == "draft")
+            {
+                <button class="btn-hub" @onclick="PublishFinder" disabled="@_publishing">
+                    @(_publishing ? "Publishing…" : "Publish")
+                </button>
+            }
+            <button class="btn-secondary" @onclick='() => Nav.NavigateTo($"/finder/preview?token={_finder.EmbedToken}")'>
+                Preview
+            </button>
+        </div>
+    </div>
+
+    @if (_error != null)
+    {
+        <div class="alert-error">@_error</div>
+    }
+    @if (_successMsg != null)
+    {
+        <div class="alert-success">@_successMsg</div>
+    }
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:8px;">
+        <!-- Steps panel -->
+        <div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <h3 style="font-size:14px;font-weight:600;">Steps (@_finder.Steps.Count)</h3>
+                <button class="btn-sm" @onclick="ShowAddStepModal">+ Add Step</button>
+            </div>
+
+            @if (_finder.Steps.Count == 0)
+            {
+                <div class="empty-state" style="padding:20px;">No steps yet. Add a step to start.</div>
+            }
+            else
+            {
+                @foreach (var step in _finder.Steps.OrderBy(s => s.StepOrder))
+                {
+                    <div class="card" style="margin-bottom:12px;">
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                            <div>
+                                <div style="font-size:11px;color:var(--color-muted);margin-bottom:4px;">
+                                    Step @step.StepOrder · @step.StepType
+                                    @if (step.IsRequired) { <span style="color:var(--hub-color);">*</span> }
+                                </div>
+                                <div style="font-weight:600;font-size:14px;">@step.QuestionText</div>
+                                @if (!string.IsNullOrEmpty(step.HelperText))
+                                {
+                                    <div style="font-size:12px;color:var(--color-muted);margin-top:4px;">@step.HelperText</div>
+                                }
+                            </div>
+                            <button class="btn-sm btn-sm--ghost" @onclick="() => ShowAddOptionModal(step)">
+                                + Option
+                            </button>
+                        </div>
+
+                        @if (step.Options.Count > 0)
+                        {
+                            <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;">
+                                @foreach (var opt in step.Options.OrderBy(o => o.SortOrder))
+                                {
+                                    <span class="tag">@opt.Label</span>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div style="margin-top:8px;font-size:12px;color:var(--color-muted);">No options yet.</div>
+                        }
+                    </div>
+                }
+            }
+        </div>
+
+        <!-- Results panel -->
+        <div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <h3 style="font-size:14px;font-weight:600;">Results (@_finder.Results.Count)</h3>
+                <button class="btn-sm" @onclick="ShowAddResultModal">+ Add Result</button>
+            </div>
+
+            @if (_finder.Results.Count == 0)
+            {
+                <div class="empty-state" style="padding:20px;">No results yet. Add a result to match answers.</div>
+            }
+            else
+            {
+                @foreach (var result in _finder.Results)
+                {
+                    <div class="card" style="margin-bottom:12px;">
+                        <div style="font-size:11px;color:var(--color-muted);margin-bottom:4px;">@result.ProductKey</div>
+                        <div style="font-weight:600;font-size:14px;">@result.Headline</div>
+                        @if (!string.IsNullOrEmpty(result.Body))
+                        {
+                            <div style="font-size:12px;color:var(--color-muted);margin-top:4px;">@result.Body</div>
+                        }
+                        @if (!string.IsNullOrEmpty(result.CtaLabel))
+                        {
+                            <div style="margin-top:8px;">
+                                <span class="tag tag--primary">@result.CtaLabel → @result.CtaUrl</span>
+                            </div>
+                        }
+                        <div style="margin-top:8px;font-size:11px;font-family:monospace;color:var(--color-muted);
+                                    background:var(--color-surface-2);padding:4px 8px;border-radius:4px;">
+                            @result.ConditionJson
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+}
+
+<!-- Add Step Modal -->
+@if (_showAddStepModal)
+{
+    <div class="modal-backdrop" @onclick="() => _showAddStepModal = false">
+        <div class="modal" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h3>Add Step</h3>
+                <button class="modal-close" @onclick="() => _showAddStepModal = false">✕</button>
+            </div>
+            <div class="modal-body">
+                @if (_modalError != null) { <div class="alert-error" style="margin-bottom:12px;">@_modalError</div> }
+                <div class="form-field">
+                    <label class="form-label">Question Text *</label>
+                    <input class="form-input" @bind="_stepQuestion" placeholder="e.g. What type of vehicle do you have?" />
+                </div>
+                <div class="form-field">
+                    <label class="form-label">Step Type</label>
+                    <select class="form-input" @bind="_stepType">
+                        <option value="single_choice">Single Choice</option>
+                        <option value="multi_choice">Multi Choice</option>
+                        <option value="text">Text Input</option>
+                        <option value="number">Number</option>
+                        <option value="date">Date</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label class="form-label">Helper Text</label>
+                    <input class="form-input" @bind="_stepHelperText" placeholder="Optional explanation..." />
+                </div>
+                <div class="form-field">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                        <input type="checkbox" @bind="_stepRequired" />
+                        Required
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" @onclick="() => _showAddStepModal = false">Cancel</button>
+                <button class="btn-hub" @onclick="AddStep" disabled="@_modalBusy">
+                    @(_modalBusy ? "Adding…" : "Add Step")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Add Option Modal -->
+@if (_showAddOptionModal && _currentStep != null)
+{
+    <div class="modal-backdrop" @onclick="() => _showAddOptionModal = false">
+        <div class="modal" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h3>Add Option to Step @_currentStep.StepOrder</h3>
+                <button class="modal-close" @onclick="() => _showAddOptionModal = false">✕</button>
+            </div>
+            <div class="modal-body">
+                @if (_modalError != null) { <div class="alert-error" style="margin-bottom:12px;">@_modalError</div> }
+                <div class="form-field">
+                    <label class="form-label">Label *</label>
+                    <input class="form-input" @bind="_optionLabel" placeholder="e.g. Car" />
+                </div>
+                <div class="form-field">
+                    <label class="form-label">Value *</label>
+                    <input class="form-input" @bind="_optionValue" placeholder="e.g. car (used in conditions)" />
+                    <span class="form-hint">Alphanumeric, hyphens, underscores only.</span>
+                </div>
+                <div class="form-field">
+                    <label class="form-label">Description</label>
+                    <input class="form-input" @bind="_optionDescription" placeholder="Optional description..." />
+                </div>
+                <div class="form-field">
+                    <label class="form-label">Icon URL</label>
+                    <input class="form-input" @bind="_optionIconUrl" placeholder="https://..." />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" @onclick="() => _showAddOptionModal = false">Cancel</button>
+                <button class="btn-hub" @onclick="AddOption" disabled="@_modalBusy">
+                    @(_modalBusy ? "Adding…" : "Add Option")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Add Result Modal -->
+@if (_showAddResultModal)
+{
+    <div class="modal-backdrop" @onclick="() => _showAddResultModal = false">
+        <div class="modal" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h3>Add Result</h3>
+                <button class="modal-close" @onclick="() => _showAddResultModal = false">✕</button>
+            </div>
+            <div class="modal-body">
+                @if (_modalError != null) { <div class="alert-error" style="margin-bottom:12px;">@_modalError</div> }
+                <div class="form-field">
+                    <label class="form-label">Product Key *</label>
+                    <input class="form-input" @bind="_resultProductKey" placeholder="e.g. car-title-transfer" />
+                </div>
+                <div class="form-field">
+                    <label class="form-label">Headline *</label>
+                    <input class="form-input" @bind="_resultHeadline" placeholder="e.g. You need a Car Title Transfer" />
+                </div>
+                <div class="form-field">
+                    <label class="form-label">Body</label>
+                    <textarea class="form-input" rows="2" @bind="_resultBody" placeholder="Description..."></textarea>
+                </div>
+                <div class="form-field">
+                    <label class="form-label">CTA Label</label>
+                    <input class="form-input" @bind="_resultCtaLabel" placeholder="e.g. Get Started" />
+                </div>
+                <div class="form-field">
+                    <label class="form-label">CTA URL</label>
+                    <input class="form-input" @bind="_resultCtaUrl" placeholder="https://..." />
+                </div>
+                <div class="form-field">
+                    <label class="form-label">Condition JSON</label>
+                    <textarea class="form-input" rows="3" @bind="_resultConditionJson"
+                              placeholder='{"1":"car","2":"new"}'></textarea>
+                    <span class="form-hint">Keys = StepOrder, values = option value. Empty {} = catch-all.</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" @onclick="() => _showAddResultModal = false">Cancel</button>
+                <button class="btn-hub" @onclick="AddResult" disabled="@_modalBusy">
+                    @(_modalBusy ? "Adding…" : "Add Result")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery] private string? Id { get; set; }
+
+    private FinderBuilderData? _finder;
+    private bool _loading = true;
+    private string? _error;
+    private string? _successMsg;
+    private bool _publishing;
+
+    // Step modal
+    private bool _showAddStepModal;
+    private string _stepQuestion = "";
+    private string _stepType = "single_choice";
+    private string _stepHelperText = "";
+    private bool _stepRequired = true;
+
+    // Option modal
+    private bool _showAddOptionModal;
+    private StepData? _currentStep;
+    private string _optionLabel = "";
+    private string _optionValue = "";
+    private string _optionDescription = "";
+    private string _optionIconUrl = "";
+
+    // Result modal
+    private bool _showAddResultModal;
+    private string _resultProductKey = "";
+    private string _resultHeadline = "";
+    private string _resultBody = "";
+    private string _resultCtaLabel = "";
+    private string _resultCtaUrl = "";
+    private string _resultConditionJson = "{}";
+
+    private bool _modalBusy;
+    private string? _modalError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Guid.TryParse(Id, out var finderId))
+            await LoadFinder(finderId);
+        else
+            _loading = false;
+    }
+
+    private async Task LoadFinder(Guid id)
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<FinderBuilderData>>(
+                $"api/finder/{id}/builder");
+            _finder = resp?.Data;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task PublishFinder()
+    {
+        if (_finder is null) return;
+        _publishing = true;
+        _error = _successMsg = null;
+        try
+        {
+            var resp = await Http.PostAsync($"api/finder/{_finder.Id}/publish", null);
+            if (resp.IsSuccessStatusCode)
+            {
+                _successMsg = "Finder published!";
+                await LoadFinder(_finder.Id);
+            }
+            else
+            {
+                var err = await resp.Content.ReadFromJsonAsync<ErrorResp>();
+                _error = err?.Error ?? "Publish failed.";
+            }
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _publishing = false; }
+    }
+
+    private void ShowAddStepModal()
+    {
+        _stepQuestion = ""; _stepType = "single_choice";
+        _stepHelperText = ""; _stepRequired = true;
+        _modalError = null; _showAddStepModal = true;
+    }
+
+    private async Task AddStep()
+    {
+        if (_finder is null || string.IsNullOrWhiteSpace(_stepQuestion))
+        { _modalError = "Question text is required."; return; }
+
+        _modalBusy = true; _modalError = null;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"api/finder/{_finder.Id}/steps", new
+            {
+                QuestionText = _stepQuestion.Trim(),
+                StepType = _stepType,
+                HelperText = string.IsNullOrWhiteSpace(_stepHelperText) ? null : _stepHelperText.Trim(),
+                IsRequired = _stepRequired,
+            });
+            if (resp.IsSuccessStatusCode)
+            {
+                _showAddStepModal = false;
+                await LoadFinder(_finder.Id);
+            }
+            else
+            {
+                var err = await resp.Content.ReadFromJsonAsync<ErrorResp>();
+                _modalError = err?.Error ?? "Failed to add step.";
+            }
+        }
+        catch (Exception ex) { _modalError = ex.Message; }
+        finally { _modalBusy = false; }
+    }
+
+    private void ShowAddOptionModal(StepData step)
+    {
+        _currentStep = step;
+        _optionLabel = ""; _optionValue = "";
+        _optionDescription = ""; _optionIconUrl = "";
+        _modalError = null; _showAddOptionModal = true;
+    }
+
+    private async Task AddOption()
+    {
+        if (_currentStep is null || string.IsNullOrWhiteSpace(_optionLabel) || string.IsNullOrWhiteSpace(_optionValue))
+        { _modalError = "Label and Value are required."; return; }
+
+        _modalBusy = true; _modalError = null;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"api/finder/steps/{_currentStep.Id}/options", new
+            {
+                Label = _optionLabel.Trim(),
+                Value = _optionValue.Trim().ToLowerInvariant(),
+                Description = string.IsNullOrWhiteSpace(_optionDescription) ? null : _optionDescription.Trim(),
+                IconUrl = string.IsNullOrWhiteSpace(_optionIconUrl) ? null : _optionIconUrl.Trim(),
+            });
+            if (resp.IsSuccessStatusCode)
+            {
+                _showAddOptionModal = false;
+                if (_finder != null) await LoadFinder(_finder.Id);
+            }
+            else
+            {
+                var err = await resp.Content.ReadFromJsonAsync<ErrorResp>();
+                _modalError = err?.Error ?? "Failed to add option.";
+            }
+        }
+        catch (Exception ex) { _modalError = ex.Message; }
+        finally { _modalBusy = false; }
+    }
+
+    private void ShowAddResultModal()
+    {
+        _resultProductKey = ""; _resultHeadline = "";
+        _resultBody = ""; _resultCtaLabel = "";
+        _resultCtaUrl = ""; _resultConditionJson = "{}";
+        _modalError = null; _showAddResultModal = true;
+    }
+
+    private async Task AddResult()
+    {
+        if (_finder is null || string.IsNullOrWhiteSpace(_resultProductKey) || string.IsNullOrWhiteSpace(_resultHeadline))
+        { _modalError = "Product Key and Headline are required."; return; }
+
+        _modalBusy = true; _modalError = null;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"api/finder/{_finder.Id}/results", new
+            {
+                ProductKey = _resultProductKey.Trim(),
+                Headline = _resultHeadline.Trim(),
+                ConditionJson = string.IsNullOrWhiteSpace(_resultConditionJson) ? "{}" : _resultConditionJson.Trim(),
+                Body = string.IsNullOrWhiteSpace(_resultBody) ? null : _resultBody.Trim(),
+                CtaLabel = string.IsNullOrWhiteSpace(_resultCtaLabel) ? null : _resultCtaLabel.Trim(),
+                CtaUrl = string.IsNullOrWhiteSpace(_resultCtaUrl) ? null : _resultCtaUrl.Trim(),
+            });
+            if (resp.IsSuccessStatusCode)
+            {
+                _showAddResultModal = false;
+                await LoadFinder(_finder.Id);
+            }
+            else
+            {
+                var err = await resp.Content.ReadFromJsonAsync<ErrorResp>();
+                _modalError = err?.Error ?? "Failed to add result.";
+            }
+        }
+        catch (Exception ex) { _modalError = ex.Message; }
+        finally { _modalBusy = false; }
+    }
+
+    private static string StatusClass(string status) => status switch
+    {
+        "published" => "success",
+        "archived"  => "muted",
+        _           => "warning",
+    };
+
+    // ── DTOs ─────────────────────────────────────────────────────────────────
+
+    private class FinderBuilderData
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string Slug { get; set; } = "";
+        public string? IntroText { get; set; }
+        public string Status { get; set; } = "draft";
+        public DateTimeOffset? PublishedAt { get; set; }
+        public string EmbedToken { get; set; } = "";
+        public List<StepData> Steps { get; set; } = [];
+        public List<ResultData> Results { get; set; } = [];
+    }
+
+    private class StepData
+    {
+        public Guid Id { get; set; }
+        public int StepOrder { get; set; }
+        public string StepType { get; set; } = "";
+        public string QuestionText { get; set; } = "";
+        public string? HelperText { get; set; }
+        public bool IsRequired { get; set; }
+        public List<OptionData> Options { get; set; } = [];
+    }
+
+    private class OptionData
+    {
+        public Guid Id { get; set; }
+        public string Label { get; set; } = "";
+        public string Value { get; set; } = "";
+        public string? Description { get; set; }
+        public string? IconUrl { get; set; }
+        public int SortOrder { get; set; }
+    }
+
+    private class ResultData
+    {
+        public Guid Id { get; set; }
+        public string ProductKey { get; set; } = "";
+        public string Headline { get; set; } = "";
+        public string? Body { get; set; }
+        public string? CtaLabel { get; set; }
+        public string? CtaUrl { get; set; }
+        public string ConditionJson { get; set; } = "{}";
+    }
+
+    private record ApiWrapper<T>(bool Success, T? Data);
+    private record ErrorResp(string? Error);
+}

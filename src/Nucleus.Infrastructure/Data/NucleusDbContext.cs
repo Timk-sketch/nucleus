@@ -46,6 +46,14 @@ public class NucleusDbContext(
     public DbSet<PageCache> PageCaches => Set<PageCache>();
     public DbSet<SiteVisit> SiteVisits => Set<SiteVisit>();
 
+    // Sprint 30 — Finder Hub
+    public DbSet<Finder> Finders => Set<Finder>();
+    public DbSet<FinderStep> FinderSteps => Set<FinderStep>();
+    public DbSet<FinderOption> FinderOptions => Set<FinderOption>();
+    public DbSet<FinderResult> FinderResults => Set<FinderResult>();
+    public DbSet<FinderSession> FinderSessions => Set<FinderSession>();
+    public DbSet<FinderAnalytics> FinderAnalytics => Set<FinderAnalytics>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -435,6 +443,104 @@ public class NucleusDbContext(
         });
 
         // ── End Sprint 29 ─────────────────────────────────────────────────
+
+        // ── Sprint 30: Finder Hub entities ────────────────────────────────
+
+        builder.Entity<Finder>(e =>
+        {
+            e.ToTable("finders");
+            e.HasKey(f => f.Id);
+            e.HasIndex(f => f.TenantId);
+            e.HasIndex(f => new { f.TenantId, f.BrandId });
+            e.HasIndex(f => new { f.BrandId, f.Status });
+            // EmbedToken must be globally unique — used for unauthenticated public API
+            e.HasIndex(f => f.EmbedToken).IsUnique();
+            // Slug unique per brand
+            e.HasIndex(f => new { f.BrandId, f.Slug }).IsUnique();
+            e.Property(f => f.Name).HasMaxLength(200).IsRequired();
+            e.Property(f => f.Slug).HasMaxLength(200).IsRequired();
+            e.Property(f => f.IntroText).HasMaxLength(1000);
+            e.Property(f => f.Status).HasMaxLength(50).HasDefaultValue("draft");
+            e.Property(f => f.EmbedToken).HasMaxLength(100).IsRequired();
+            e.HasOne(f => f.Brand).WithMany().HasForeignKey(f => f.BrandId);
+            e.HasMany(f => f.Steps).WithOne(s => s.Finder).HasForeignKey(s => s.FinderId);
+            e.HasMany(f => f.Results).WithOne(r => r.Finder).HasForeignKey(r => r.FinderId);
+            e.HasMany(f => f.Sessions).WithOne(s => s.Finder).HasForeignKey(s => s.FinderId);
+            e.HasMany(f => f.Analytics).WithOne(a => a.Finder).HasForeignKey(a => a.FinderId);
+        });
+
+        builder.Entity<FinderStep>(e =>
+        {
+            e.ToTable("finder_steps");
+            e.HasKey(s => s.Id);
+            e.HasIndex(s => s.TenantId);
+            e.HasIndex(s => new { s.TenantId, s.FinderId });
+            e.HasIndex(s => new { s.FinderId, s.StepOrder });
+            e.Property(s => s.StepType).HasMaxLength(50).HasDefaultValue("single_choice");
+            e.Property(s => s.QuestionText).HasMaxLength(500).IsRequired();
+            e.Property(s => s.HelperText).HasMaxLength(500);
+            e.HasMany(s => s.Options).WithOne(o => o.Step).HasForeignKey(o => o.StepId);
+        });
+
+        builder.Entity<FinderOption>(e =>
+        {
+            e.ToTable("finder_options");
+            e.HasKey(o => o.Id);
+            e.HasIndex(o => o.TenantId);
+            e.HasIndex(o => new { o.TenantId, o.StepId });
+            e.HasIndex(o => new { o.StepId, o.SortOrder });
+            e.Property(o => o.Label).HasMaxLength(200).IsRequired();
+            e.Property(o => o.Value).HasMaxLength(200).IsRequired();
+            e.Property(o => o.IconUrl).HasMaxLength(500);
+            e.Property(o => o.Description).HasMaxLength(500);
+            e.HasOne(o => o.Step).WithMany(s => s.Options).HasForeignKey(o => o.StepId);
+        });
+
+        builder.Entity<FinderResult>(e =>
+        {
+            e.ToTable("finder_results");
+            e.HasKey(r => r.Id);
+            e.HasIndex(r => r.TenantId);
+            e.HasIndex(r => new { r.TenantId, r.FinderId });
+            e.HasIndex(r => new { r.FinderId, r.ProductKey });
+            e.Property(r => r.ConditionJson).HasColumnType("jsonb").HasDefaultValue("{}");
+            e.Property(r => r.ProductKey).HasMaxLength(200).IsRequired();
+            e.Property(r => r.Headline).HasMaxLength(300).IsRequired();
+            e.Property(r => r.Body).HasMaxLength(2000);
+            e.Property(r => r.CtaLabel).HasMaxLength(100);
+            e.Property(r => r.CtaUrl).HasMaxLength(500);
+            e.HasOne(r => r.Finder).WithMany(f => f.Results).HasForeignKey(r => r.FinderId);
+        });
+
+        builder.Entity<FinderSession>(e =>
+        {
+            e.ToTable("finder_sessions");
+            e.HasKey(s => s.Id);
+            e.HasIndex(s => s.TenantId);
+            e.HasIndex(s => new { s.TenantId, s.FinderId });
+            e.HasIndex(s => s.SessionToken).IsUnique();
+            e.HasIndex(s => new { s.FinderId, s.Converted });
+            e.HasIndex(s => new { s.FinderId, s.CompletedAt });
+            e.Property(s => s.SessionToken).HasMaxLength(100).IsRequired();
+            e.Property(s => s.AnswersJson).HasColumnType("jsonb").HasDefaultValue("{}");
+            e.Property(s => s.ResultKey).HasMaxLength(200);
+            e.HasOne(s => s.Finder).WithMany(f => f.Sessions).HasForeignKey(s => s.FinderId);
+        });
+
+        builder.Entity<FinderAnalytics>(e =>
+        {
+            e.ToTable("finder_analytics");
+            e.HasKey(a => a.Id);
+            e.HasIndex(a => a.TenantId);
+            e.HasIndex(a => new { a.TenantId, a.FinderId });
+            // One row per finder per date
+            e.HasIndex(a => new { a.FinderId, a.Date }).IsUnique();
+            e.HasOne(a => a.Finder).WithMany(f => f.Analytics).HasForeignKey(a => a.FinderId);
+            e.HasOne(a => a.DropOffStep).WithMany().HasForeignKey(a => a.DropOffStepId)
+                .IsRequired(false);
+        });
+
+        // ── End Sprint 30 ─────────────────────────────────────────────────
 
         // Global tenant query filter on all TenantEntity subclasses
         var tenantId = tenantService.TenantId;

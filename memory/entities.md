@@ -1,6 +1,6 @@
 # Nucleus — Domain Entities Reference
 
-Last updated: Sprint 29
+Last updated: Sprint 30
 
 ## Base Classes
 
@@ -46,8 +46,14 @@ public abstract class TenantEntity {
 | SiteDeployment | TenantEntity | site_deployments | BrandId, DeployedBy, PageCount, Status, DeployedAt, Notes | 29 |
 | PageCache | TenantEntity | page_caches | BrandId, Slug (unique per brand), RenderedHtml, Etag, CachedAt, InvalidatedAt | 29 |
 | SiteVisit | TenantEntity | site_visits | BrandId, Slug, Referrer, UserAgent, IpHash (SHA-256), VisitedAt | 29 |
+| Finder | TenantEntity | finders | BrandId, Name, Slug (unique per brand), IntroText, Status, PublishedAt, EmbedToken (globally unique) | 30 |
+| FinderStep | TenantEntity | finder_steps | FinderId, StepOrder, StepType, QuestionText, HelperText, IsRequired | 30 |
+| FinderOption | TenantEntity | finder_options | StepId, Label, Value, IconUrl, Description, SortOrder | 30 |
+| FinderResult | TenantEntity | finder_results | FinderId, ConditionJson (jsonb), ProductKey, Headline, Body, CtaLabel, CtaUrl | 30 |
+| FinderSession | TenantEntity | finder_sessions | FinderId, SessionToken (globally unique), AnswersJson (jsonb), ResultKey, Converted, CompletedAt | 30 |
+| FinderAnalytics | TenantEntity | finder_analytics | FinderId, Date (DateOnly), Starts, Completions, Conversions, DropOffStepId (unique on FinderId+Date) | 30 |
 
-## Key Indexes (all entities have TenantId index + composite (TenantId, BrandId))
+## Key Indexes (all entities have TenantId index + composite (TenantId, BrandId/FinderId))
 
 ### Additional domain indexes
 - `brand_keywords`: (BrandId, Keyword) unique
@@ -69,6 +75,12 @@ public abstract class TenantEntity {
 - `page_caches`: **(BrandId, Slug) UNIQUE**, InvalidatedAt
 - `site_visits`: (BrandId, Slug), (BrandId, VisitedAt)
 - `site_deployments`: (BrandId, CreatedAt)
+- `finders`: **EmbedToken GLOBALLY UNIQUE**, **(BrandId, Slug) UNIQUE**, (BrandId, Status)
+- `finder_steps`: (FinderId, StepOrder), (TenantId, FinderId)
+- `finder_options`: (StepId, SortOrder), (TenantId, StepId)
+- `finder_results`: (FinderId, ProductKey)
+- `finder_sessions`: **SessionToken GLOBALLY UNIQUE**, (FinderId, Converted), (FinderId, CompletedAt)
+- `finder_analytics`: **(FinderId, Date) UNIQUE** (one row per finder per day)
 
 ## EF Configuration Notes
 - `Brand.WpAppPassword`, `GhlApiKey`, `DripApiToken`, `SendgridApiKey` → encrypted at rest via EncryptedStringConverter
@@ -77,6 +89,10 @@ public abstract class TenantEntity {
 - `WebsitePage.SchemaJson` → jsonb (nullable)
 - `AuditLog.Changes` → jsonb
 - `Brand.ServicesProvisioned` → jsonb
+- `FinderResult.ConditionJson` → jsonb (default `{}`)
+- `FinderSession.AnswersJson` → jsonb (default `{}`)
 - Global TenantId query filter applied to all TenantEntity subclasses in OnModelCreating
 - `SiteDomain.Hostname` unique index uses `IgnoreQueryFilters()` in application code for global lookup
 - `PageCache` and `SiteVisit` use `IgnoreQueryFilters()` in public renderer (no auth context)
+- `Finder.EmbedToken`, `FinderSession`, `FinderAnalytics` use `IgnoreQueryFilters()` for embed widget (no auth context)
+- `FinderAnalytics.Date` uses `DateOnly` type (EF Core 9 supports this natively as DATE column)

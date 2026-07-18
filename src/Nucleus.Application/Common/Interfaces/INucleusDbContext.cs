@@ -38,5 +38,13 @@ public interface INucleusDbContext
     DbSet<PageCache> PageCaches { get; }
     DbSet<SiteVisit> SiteVisits { get; }
 
+    // Sprint 30 — Finder Hub
+    DbSet<Finder> Finders { get; }
+    DbSet<FinderStep> FinderSteps { get; }
+    DbSet<FinderOption> FinderOptions { get; }
+    DbSet<FinderResult> FinderResults { get; }
+    DbSet<FinderSession> FinderSessions { get; }
+    DbSet<FinderAnalytics> FinderAnalytics { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

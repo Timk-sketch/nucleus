@@ -1,0 +1,402 @@
+@page "/finder/preview"
+@attribute [Authorize]
+@layout FinderLayout
+@inject HttpClient Http
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Preview — Finder Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Preview</h1>
+        <p class="page-subtitle">Test your finder widget. Answers are not tracked.</p>
+    </div>
+    @if (_finder != null)
+    {
+        <div style="display:flex;gap:8px;">
+            <button class="btn-secondary" @onclick="ResetPreview">Reset</button>
+            <button class="btn-secondary" @onclick="CopyEmbedSnippet">Copy Embed Code</button>
+        </div>
+    }
+</div>
+
+@if (string.IsNullOrEmpty(_token) && _finder == null && !_loadingFinder)
+{
+    <div class="empty-state">
+        Open a finder from the <a href="/finder">Finders list</a> and click Preview,
+        or pass <code>?token=embedToken</code> in the URL.
+    </div>
+}
+else if (_loadError != null)
+{
+    <div class="alert-error">@_loadError</div>
+}
+else if (_loadingFinder)
+{
+    <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+}
+else if (_finder != null)
+{
+    <div style="max-width:520px;margin:0 auto;">
+        @if (!_started)
+        {
+            <!-- Intro screen -->
+            <div class="card" style="text-align:center;padding:32px;">
+                <h2 style="font-size:20px;font-weight:700;margin-bottom:12px;">@_finder.Name</h2>
+                @if (!string.IsNullOrEmpty(_finder.IntroText))
+                {
+                    <p style="color:var(--color-muted);margin-bottom:24px;">@_finder.IntroText</p>
+                }
+                <button class="btn-hub" @onclick="StartFinder">Let's Get Started &rarr;</button>
+            </div>
+        }
+        else if (_resultKey != null)
+        {
+            <!-- Result screen -->
+            var matchedResult = _finder.Results.FirstOrDefault(r => r.ProductKey == _resultKey)
+                                ?? _finder.Results.FirstOrDefault();
+            @if (matchedResult != null)
+            {
+                <div class="card" style="text-align:center;padding:32px;">
+                    <div style="font-size:11px;color:var(--color-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">
+                        Your Result
+                    </div>
+                    <h2 style="font-size:20px;font-weight:700;margin-bottom:12px;">@matchedResult.Headline</h2>
+                    @if (!string.IsNullOrEmpty(matchedResult.Body))
+                    {
+                        <p style="color:var(--color-muted);margin-bottom:24px;">@matchedResult.Body</p>
+                    }
+                    @if (!string.IsNullOrEmpty(matchedResult.CtaLabel))
+                    {
+                        <a class="btn-hub" href="@matchedResult.CtaUrl" target="_blank" rel="noopener">
+                            @matchedResult.CtaLabel &rarr;
+                        </a>
+                    }
+                    <div style="margin-top:16px;">
+                        <button class="btn-sm btn-sm--ghost" @onclick="ResetPreview">Start Over</button>
+                    </div>
+                </div>
+            }
+        }
+        else if (_currentStepIndex < _finder.Steps.Count)
+        {
+            <!-- Step screen -->
+            var step = _finder.Steps[_currentStepIndex];
+            <div class="card" style="padding:28px;">
+                <!-- Progress bar -->
+                <div style="margin-bottom:20px;">
+                    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--color-muted);margin-bottom:6px;">
+                        <span>Step @(_currentStepIndex + 1) of @_finder.Steps.Count</span>
+                        <span>@Math.Round((double)_currentStepIndex / _finder.Steps.Count * 100, 0)% complete</span>
+                    </div>
+                    <div style="height:4px;background:var(--color-surface-2);border-radius:2px;">
+                        <div style="height:4px;background:var(--hub-color);border-radius:2px;width:@((double)_currentStepIndex / _finder.Steps.Count * 100)%"></div>
+                    </div>
+                </div>
+
+                <h3 style="font-size:17px;font-weight:600;margin-bottom:8px;">@step.QuestionText</h3>
+                @if (!string.IsNullOrEmpty(step.HelperText))
+                {
+                    <p style="font-size:13px;color:var(--color-muted);margin-bottom:16px;">@step.HelperText</p>
+                }
+
+                @if (step.StepType is "single_choice" or "multi_choice")
+                {
+                    <div style="display:flex;flex-direction:column;gap:10px;">
+                        @foreach (var opt in step.Options.OrderBy(o => o.SortOrder))
+                        {
+                            var optVal = opt.Value;
+                            var stepId = step.Id;
+                            <button class="option-btn @(IsSelected(stepId, optVal) ? "option-btn--selected" : "")"
+                                    @onclick="() => SelectOption(step, optVal)">
+                                @if (!string.IsNullOrEmpty(opt.IconUrl))
+                                {
+                                    <img src="@opt.IconUrl" alt="" style="width:24px;height:24px;object-fit:contain;" />
+                                }
+                                <span style="font-weight:500;">@opt.Label</span>
+                                @if (!string.IsNullOrEmpty(opt.Description))
+                                {
+                                    <span style="font-size:12px;color:var(--color-muted);">@opt.Description</span>
+                                }
+                            </button>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <!-- Text/number/date input -->
+                    <input class="form-input" style="margin-bottom:16px;"
+                           type="@InputType(step.StepType)"
+                           placeholder="Your answer..."
+                           @onchange="e => SetTextAnswer(step.Id, e.Value?.ToString())" />
+                }
+
+                <div style="display:flex;justify-content:space-between;margin-top:20px;">
+                    @if (_currentStepIndex > 0)
+                    {
+                        <button class="btn-secondary" @onclick="PreviousStep">&larr; Back</button>
+                    }
+                    else
+                    {
+                        <div></div>
+                    }
+                    <button class="btn-hub" @onclick="NextStep"
+                            disabled="@(step.IsRequired && !HasAnswer(step))">
+                        @(_currentStepIndex == _finder.Steps.Count - 1 ? "See Result \u2192" : "Next \u2192")
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    // Token comes from query string — must be a plain field, not a property with [SupplyParameterFromQuery]
+    // because Blazor WASM handles query params via NavigationManager
+    private string? _token;
+
+    private PublicFinderData? _finder;
+    private bool _loadingFinder = true;
+    private string? _loadError;
+
+    private bool _started;
+    private int _currentStepIndex;
+    private Dictionary<Guid, List<string>> _answers = new();
+    private string? _resultKey;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Parse token from query string
+        var uri = new Uri(Nav.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        _token = query["token"];
+
+        if (!string.IsNullOrEmpty(_token))
+            await LoadFinder(_token);
+        else
+            _loadingFinder = false;
+    }
+
+    private async Task LoadFinder(string token)
+    {
+        _loadingFinder = true;
+        _loadError = null;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<PublicFinderData>>(
+                $"api/finder/{token}");
+            _finder = resp?.Data;
+            if (_finder is null)
+                _loadError = "Finder not found or not published.";
+        }
+        catch (Exception ex) { _loadError = ex.Message; }
+        finally { _loadingFinder = false; }
+    }
+
+    private void StartFinder()
+    {
+        _started = true;
+        _currentStepIndex = 0;
+        _answers = new Dictionary<Guid, List<string>>();
+        _resultKey = null;
+    }
+
+    private void ResetPreview()
+    {
+        _started = false;
+        _currentStepIndex = 0;
+        _answers = new Dictionary<Guid, List<string>>();
+        _resultKey = null;
+    }
+
+    private void SelectOption(StepData step, string value)
+    {
+        if (step.StepType == "single_choice")
+        {
+            _answers[step.Id] = [value];
+        }
+        else
+        {
+            // multi_choice toggle
+            if (!_answers.TryGetValue(step.Id, out var list))
+            {
+                list = [];
+                _answers[step.Id] = list;
+            }
+            if (list.Contains(value)) list.Remove(value);
+            else list.Add(value);
+        }
+    }
+
+    private void SetTextAnswer(Guid stepId, string? value)
+    {
+        if (!string.IsNullOrEmpty(value))
+            _answers[stepId] = [value];
+        else
+            _answers.Remove(stepId);
+    }
+
+    private bool IsSelected(Guid stepId, string value) =>
+        _answers.TryGetValue(stepId, out var list) && list.Contains(value);
+
+    private bool HasAnswer(StepData step) =>
+        _answers.TryGetValue(step.Id, out var list) && list.Count > 0;
+
+    private void NextStep()
+    {
+        if (_finder is null) return;
+
+        if (_currentStepIndex == _finder.Steps.Count - 1)
+        {
+            // Last step — compute result client-side (preview only, no API call)
+            _resultKey = ComputeResult();
+        }
+        else
+        {
+            _currentStepIndex++;
+        }
+    }
+
+    private void PreviousStep()
+    {
+        if (_currentStepIndex > 0)
+            _currentStepIndex--;
+    }
+
+    private string? ComputeResult()
+    {
+        if (_finder is null) return null;
+
+        // Build answers dict keyed by StepOrder
+        var answersByOrder = new Dictionary<string, string>();
+        foreach (var step in _finder.Steps)
+        {
+            if (_answers.TryGetValue(step.Id, out var vals) && vals.Count > 0)
+                answersByOrder[step.StepOrder.ToString()] = vals[0];
+        }
+
+        // Find first matching result (specific conditions first, catch-all last)
+        var sorted = _finder.Results
+            .OrderBy(r => r.ConditionJson is "{}" or "" ? 1 : 0)
+            .ToList();
+
+        foreach (var result in sorted)
+        {
+            if (MatchesCondition(answersByOrder, result.ConditionJson))
+                return result.ProductKey;
+        }
+
+        return null;
+    }
+
+    private static bool MatchesCondition(Dictionary<string, string> answers, string condJson)
+    {
+        try
+        {
+            var doc = System.Text.Json.JsonDocument.Parse(condJson);
+            var root = doc.RootElement;
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return false;
+
+            var props = root.EnumerateObject().ToList();
+            if (props.Count == 0) return true; // catch-all
+
+            foreach (var prop in props)
+            {
+                if (!answers.TryGetValue(prop.Name, out var answer)) return false;
+
+                if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    var any = false;
+                    foreach (var item in prop.Value.EnumerateArray())
+                    {
+                        if (string.Equals(answer, item.GetString(), StringComparison.OrdinalIgnoreCase))
+                        { any = true; break; }
+                    }
+                    if (!any) return false;
+                }
+                else
+                {
+                    if (!string.Equals(answer, prop.Value.GetString(), StringComparison.OrdinalIgnoreCase))
+                        return false;
+                }
+            }
+            return true;
+        }
+        catch { return false; }
+    }
+
+    private async Task CopyEmbedSnippet()
+    {
+        if (_finder is null) return;
+        var snippet = BuildEmbedSnippet(_finder.EmbedToken, _finder.Id);
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", snippet);
+    }
+
+    private static string BuildEmbedSnippet(string embedToken, Guid finderId)
+    {
+        return
+            "<!-- Nucleus Finder Embed: " + embedToken + " -->\n" +
+            "<div id=\"nucleus-finder-" + embedToken + "\"></div>\n" +
+            "<script>\n" +
+            "(function() {\n" +
+            "  var d = document, s = d.createElement('script');\n" +
+            "  s.src = '/finder-widget.js';\n" +
+            "  s.onload = function() { NucleusFinder.init('" + embedToken + "', '" + finderId + "'); };\n" +
+            "  d.head.appendChild(s);\n" +
+            "})();\n" +
+            "</script>";
+    }
+
+    private static string InputType(string stepType) => stepType switch
+    {
+        "number" => "number",
+        "date"   => "date",
+        _        => "text",
+    };
+
+    // ── DTOs ─────────────────────────────────────────────────────────────────
+
+    private class PublicFinderData
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string? IntroText { get; set; }
+        public string EmbedToken { get; set; } = "";
+        public List<StepData> Steps { get; set; } = [];
+        public List<ResultData> Results { get; set; } = [];
+    }
+
+    private class StepData
+    {
+        public Guid Id { get; set; }
+        public int StepOrder { get; set; }
+        public string StepType { get; set; } = "single_choice";
+        public string QuestionText { get; set; } = "";
+        public string? HelperText { get; set; }
+        public bool IsRequired { get; set; }
+        public List<OptionData> Options { get; set; } = [];
+    }
+
+    private class OptionData
+    {
+        public Guid Id { get; set; }
+        public string Label { get; set; } = "";
+        public string Value { get; set; } = "";
+        public string? Description { get; set; }
+        public string? IconUrl { get; set; }
+        public int SortOrder { get; set; }
+    }
+
+    private class ResultData
+    {
+        public string ProductKey { get; set; } = "";
+        public string Headline { get; set; } = "";
+        public string? Body { get; set; }
+        public string? CtaLabel { get; set; }
+        public string? CtaUrl { get; set; }
+        public string ConditionJson { get; set; } = "{}";
+    }
+
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

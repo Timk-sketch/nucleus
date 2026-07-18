@@ -1,0 +1,247 @@
+@page "/finder/analytics"
+@attribute [Authorize]
+@layout FinderLayout
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<PageTitle>Analytics — Finder Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Analytics</h1>
+        <p class="page-subtitle">Track starts, completions, and conversions for your finders.</p>
+    </div>
+    <select class="form-input" style="width:auto;" @bind="_days" @bind:after="LoadAnalytics">
+        <option value="7">Last 7 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="90">Last 90 days</option>
+    </select>
+</div>
+
+@if (_brands.Count == 0 && !_loading)
+{
+    <div class="empty-state">No brands yet. <a href="/brands">Add a brand</a> first.</div>
+}
+else
+{
+    <div class="brand-pill-row">
+        @foreach (var b in _brands)
+        {
+            <button class="brand-pill-btn @(_selectedBrand?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                    @onclick="() => SelectBrand(b)">
+                <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+                @b.Name
+            </button>
+        }
+    </div>
+}
+
+@if (_error != null)
+{
+    <div class="alert-error">@_error</div>
+}
+
+@if (_loading)
+{
+    <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+}
+else if (_selectedBrand != null)
+{
+    @if (_finders.Count == 0)
+    {
+        <div class="empty-state">No finders yet for <strong>@_selectedBrand.Name</strong>.</div>
+    }
+    else
+    {
+        <!-- Finder picker -->
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;">
+            @foreach (var f in _finders)
+            {
+                <button class="brand-pill-btn @(_selectedFinder?.Id == f.Id ? "brand-pill-btn--active" : "")"
+                        @onclick="() => SelectFinder(f)">
+                    @f.Name
+                    <span class="status-badge status-badge--@StatusClass(f.Status)" style="margin-left:6px;">@f.Status</span>
+                </button>
+            }
+        </div>
+
+        @if (_analytics != null)
+        {
+            <!-- Stat cards -->
+            <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px;">
+                <div class="stat-card stat-card--sm">
+                    <div class="stat-label">Total Starts</div>
+                    <div class="stat-value" style="color:var(--hub-color)">@_analytics.TotalStarts</div>
+                </div>
+                <div class="stat-card stat-card--sm">
+                    <div class="stat-label">Completions</div>
+                    <div class="stat-value">@_analytics.TotalCompletions</div>
+                </div>
+                <div class="stat-card stat-card--sm">
+                    <div class="stat-label">Conversions</div>
+                    <div class="stat-value" style="color:#16a34a;">@_analytics.TotalConversions</div>
+                </div>
+                <div class="stat-card stat-card--sm">
+                    <div class="stat-label">Completion Rate</div>
+                    <div class="stat-value">
+                        @(_analytics.CompletionRate.HasValue
+                            ? $"{_analytics.CompletionRate.Value * 100:F1}%"
+                            : "—")
+                    </div>
+                </div>
+                <div class="stat-card stat-card--sm">
+                    <div class="stat-label">Conversion Rate</div>
+                    <div class="stat-value">
+                        @(_analytics.ConversionRate.HasValue
+                            ? $"{_analytics.ConversionRate.Value * 100:F1}%"
+                            : "—")
+                    </div>
+                </div>
+            </div>
+
+            <!-- Daily stats table -->
+            @if (_analytics.DailyStats.Count > 0)
+            {
+                <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">Daily Breakdown</h3>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Starts</th>
+                                <th>Completions</th>
+                                <th>Conversions</th>
+                                <th>Completion %</th>
+                                <th>Conversion %</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _analytics.DailyStats.OrderByDescending(r => r.Date))
+                            {
+                                <tr>
+                                    <td style="font-size:12px;color:var(--color-muted);">@row.Date.ToString("MMM d, yyyy")</td>
+                                    <td style="font-weight:600;">@row.Starts</td>
+                                    <td>@row.Completions</td>
+                                    <td style="color:#16a34a;font-weight:600;">@row.Conversions</td>
+                                    <td style="font-size:12px;">
+                                        @(row.Starts > 0 ? $"{(double)row.Completions / row.Starts * 100:F1}%" : "—")
+                                    </td>
+                                    <td style="font-size:12px;">
+                                        @(row.Completions > 0 ? $"{(double)row.Conversions / row.Completions * 100:F1}%" : "—")
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="empty-state">No analytics data yet for this window.</div>
+            }
+        }
+    }
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private List<FinderRow> _finders = [];
+    private FinderRow? _selectedFinder;
+    private AnalyticsData? _analytics;
+    private bool _loading;
+    private string? _error;
+    private int _days = 30;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count > 0)
+            await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _selectedFinder = null;
+        _analytics = null;
+        _error = null;
+        _loading = true;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<List<FinderRow>>>(
+                $"api/finder?brandId={brand.Id}");
+            _finders = resp?.Data ?? [];
+            if (_finders.Count > 0)
+                await SelectFinder(_finders[0]);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task SelectFinder(FinderRow finder)
+    {
+        _selectedFinder = finder;
+        _analytics = null;
+        await LoadAnalytics();
+    }
+
+    private async Task LoadAnalytics()
+    {
+        if (_selectedFinder is null) return;
+        _loading = true;
+        _analytics = null;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<AnalyticsData>>(
+                $"api/finder/{_selectedFinder.Id}/analytics?days={_days}");
+            _analytics = resp?.Data;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private static string StatusClass(string status) => status switch
+    {
+        "published" => "success",
+        "archived"  => "muted",
+        _           => "warning",
+    };
+
+    // ── DTOs ─────────────────────────────────────────────────────────────────
+
+    private class BrandItem
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string PrimaryColor { get; set; } = "#7c3aed";
+    }
+
+    private class FinderRow
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string Status { get; set; } = "draft";
+    }
+
+    private class AnalyticsData
+    {
+        public int TotalStarts { get; set; }
+        public int TotalCompletions { get; set; }
+        public int TotalConversions { get; set; }
+        public double? CompletionRate { get; set; }
+        public double? ConversionRate { get; set; }
+        public List<DailyRow> DailyStats { get; set; } = [];
+    }
+
+    private class DailyRow
+    {
+        public DateOnly Date { get; set; }
+        public int Starts { get; set; }
+        public int Completions { get; set; }
+        public int Conversions { get; set; }
+    }
+
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

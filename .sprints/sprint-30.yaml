@@ -1,7 +1,7 @@
 sprint: 30
 name: Finder Hub (Quiz Builder)
 namespace: FinderHub
-status: pending
+status: in_progress
 
 # Ports the Service Finder / Quiz Builder from SEO Hub into Nucleus.
 # Currently lives at quiz.dirt-legal.com as a standalone embedded widget.

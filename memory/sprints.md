@@ -47,8 +47,118 @@ A feature DOES NOT ship to Nucleus until it has been:
 | 27 | Authority Hub — backlinks, brand mentions, schema manager, outreach queue |
 | 28 | Studio Hub — page manager, design studio, image generator, asset library |
 | 29 | CMS Renderer Hub — public page renderer, custom domains, site deploy, cache invalidation, analytics |
+| 30 | Finder Hub — quiz builder, embed widget, session tracking, conversion analytics |
 
-**Current state: Sprint 29 complete. Build: 0 errors, 0 warnings. Tests: 5/5 pass.**
+**Current state: Sprint 30 complete. Build: 0 errors, 0 warnings. Tests: 5/5 pass.**
+
+---
+
+## Sprint 30 — Finder Hub (Quiz Builder) (COMPLETE ✅)
+
+**Build status:** `dotnet build Nucleus.sln` → 0 errors, 0 warnings
+**Test status:** `dotnet test` → 5/5 pass
+
+### Domain Entities (all inherit TenantEntity, all tenant-scoped)
+- `Finder` — name, brand_id, slug (unique per brand), intro_text, status (draft|published|archived), published_at, embed_token (globally unique)
+- `FinderStep` — finder_id, step_order, step_type (single_choice|multi_choice|text|date|number), question_text, helper_text, is_required
+- `FinderOption` — step_id, label, value, icon_url, description, sort_order
+- `FinderResult` — finder_id, condition_json (jsonb), product_key, headline, body, cta_label, cta_url
+- `FinderSession` — finder_id, session_token (globally unique), answers_json (jsonb), result_key, converted, completed_at
+- `FinderAnalytics` — finder_id, date (DateOnly), starts, completions, conversions, drop_off_step_id (unique on FinderId+Date)
+
+### EF Core
+- Migration `FinderHub` created — creates 6 tables: finders, finder_steps, finder_options, finder_results, finder_sessions, finder_analytics
+- `finders.embed_token` has global unique index — used for unauthenticated public API lookups
+- `finders` has unique index `(BrandId, Slug)` — slug unique per brand
+- `finder_sessions.session_token` has global unique index
+- `finder_analytics` has unique index `(FinderId, Date)` — one row per finder per day
+- All tables have `(TenantId, BrandId/FinderId)` composite indexes
+- All registered in `INucleusDbContext` interface + `NucleusDbContext` implementation
+
+### MediatR Commands (Nucleus.Application/FinderHub/Commands/)
+- `CreateFinderCommand` — creates Finder for brand; enforces slug uniqueness per brand; generates embed_token; returns Finder Id
+- `PublishFinderCommand` — validates 1+ steps + 1+ results exist; sets status=published + PublishedAt; returns bool
+- `AddFinderStepCommand` — adds step to finder; auto-assigns StepOrder = max+1; returns FinderStepDto
+- `AddFinderOptionCommand` — adds option to step; validates step belongs to tenant; auto-assigns SortOrder; returns FinderOptionDto
+- `AddFinderResultCommand` — adds result to finder; stores ConditionJson as jsonb; returns FinderResultDto
+- `RecordFinderSessionCommand` — creates/resumes anonymous session by EmbedToken; runs result matching on completion; increments daily analytics (starts/completions); uses IgnoreQueryFilters (no auth required)
+- `RecordFinderConversionCommand` — marks session converted=true; increments daily analytics conversions; idempotent; uses IgnoreQueryFilters
+
+### MediatR Queries (Nucleus.Application/FinderHub/Queries/)
+- `GetFindersQuery` — lists finders for a brand, tenant-scoped; includes step/result count
+- `GetFinderBuilderQuery` — returns full builder view (steps+options+results) for admin UI; tenant-scoped
+- `GetPublicFinderQuery` — returns full public config by EmbedToken; IgnoreQueryFilters (no auth); only published finders
+- `GetFinderAnalyticsQuery` — returns aggregate + daily stats for a finder; configurable day window (1-365); tenant-scoped
+- `GetFinderSessionQuery` — resumes session by EmbedToken+SessionToken; IgnoreQueryFilters (no auth)
+
+### FinderResultMatcher (Nucleus.Application/FinderHub/)
+- Static helper: matches user answers (JSON keyed by StepOrder) against FinderResult conditions
+- Supports exact match and array OR matching: `{"1": ["car", "truck"]}`
+- Empty condition `{}` = catch-all (sorted last so specific rules win)
+- Both server-side (RecordFinderSessionCommand) and client-side preview (Blazor) use same logic
+
+### DTOs (Nucleus.Application/FinderHub/DTOs/)
+- `FinderDto` — summary (id, name, slug, status, embed_token, step_count, result_count)
+- `FinderBuilderDto` — full admin view with steps+options+results
+- `FinderStepDto` — step with nested options list
+- `FinderOptionDto` — label, value, icon_url, description, sort_order
+- `FinderResultDto` — condition_json, product_key, headline, cta
+- `FinderSessionDto` — session_token, answers_json, result_key, converted, completed_at
+- `FinderAnalyticsDto` — totals + completion/conversion rates + daily breakdown
+- `PublicFinderDto` — public-safe config (no internal IDs except finder Id) for embed widget
+
+### API Controller (`Nucleus.Api/Controllers/FinderController.cs`)
+#### Authenticated (admin/builder):
+- `GET  /api/finder?brandId=` — list finders
+- `POST /api/finder` — create finder (returns 201 + id)
+- `GET  /api/finder/{id}/builder` — full builder view
+- `POST /api/finder/{id}/publish` — publish finder
+- `POST /api/finder/{id}/steps` — add a step
+- `POST /api/finder/steps/{stepId}/options` — add option to step
+- `POST /api/finder/{id}/results` — add result
+- `GET  /api/finder/{id}/analytics?days=30` — analytics
+#### Unauthenticated (embed widget):
+- `GET  /api/finder/{embedToken}` — public finder config (steps+results)
+- `GET  /api/finder/{embedToken}/session/{sessionToken}` — resume session
+- `POST /api/finder/{embedToken}/session` — start/update session + completion
+- `POST /api/finder/{embedToken}/convert` — record CTA conversion
+
+### Blazor Pages (all use FinderLayout — violet #7c3aed theme)
+- `/finder` — finder list with brand picker, status badges, create modal, publish button
+- `/finder/builder?id={finderId}` — split-panel builder: steps (left) + results (right), add-step/option/result modals, embed token display, publish button
+- `/finder/builder/steps` — redirects to /finder/builder
+- `/finder/builder/results` — redirects to /finder/builder
+- `/finder/analytics` — finder picker + stat cards (starts/completions/conversions/rates) + daily breakdown table with selectable day window
+- `/finder/preview?token={embedToken}` — live widget preview (intro → steps with progress bar → result), client-side result matching, Copy Embed Code button
+
+### Layout
+- `FinderLayout.razor` — focus menu: Finders, Builder, Preview, Analytics — using `hub-focus-menu`/`hub-focus-item` CSS classes
+- Hub color: `#7c3aed` (violet — distinct from all 6 existing hubs)
+- `ShellLayout.razor` — Finder hub pill added to hub-switcher (7th pill)
+
+### Key Technical Notes
+- EmbedToken is the security boundary for unauthenticated operations (like BrandId for CMS renderer)
+- All public endpoints use `IgnoreQueryFilters()` — global lookup, not tenant-scoped
+- Session tracking is anonymous — no login required from end user
+- Result matching: conditions keyed by StepOrder (string), supports exact + array OR
+- FinderResultMatcher is a static pure function — used both in server-side commands and Blazor preview
+- Analytics incremented inline in RecordFinderSession/Conversion (no background job needed at this scale)
+- Preview page parses query string via `NavigationManager + HttpUtility.ParseQueryString` (not `[SupplyParameterFromQuery]` to avoid Blazor Razor parser issues)
+
+### Acceptance Criteria — ALL PASS ✅
+- [x] `dotnet build Nucleus.sln` — 0 errors, 0 warnings
+- [x] `dotnet test` — 5/5 pass
+- [x] EF migration `FinderHub` applies cleanly (6 tables created with indexes)
+- [x] `POST /api/finder` creates Finder scoped to TenantId+BrandId
+- [x] `GET /api/finder/{embedToken}` returns full config (unauthenticated)
+- [x] `POST /api/finder/{embedToken}/session` creates FinderSession with answers_json
+- [x] `POST /api/finder/{embedToken}/convert` marks session converted=true
+- [x] FinderResult condition matching logic returns correct product_key for given answers
+- [x] `/finder` Blazor page lists all finders for brand
+- [x] `/finder/builder` Blazor page creates steps and options via modals
+- [x] `/finder/preview` Blazor page shows live finder preview with step-by-step UX
+- [x] Embed snippet (JS) generated and copyable from Preview page
+- [x] Analytics: starts/completions/conversions tracked per finder per day
 
 ---
 
@@ -56,68 +166,6 @@ A feature DOES NOT ship to Nucleus until it has been:
 
 **Build status:** `dotnet build Nucleus.sln` → 0 errors, 0 warnings
 **Test status:** `dotnet test` → 5/5 pass
-
-### Domain Entities (all inherit TenantEntity, all tenant-scoped)
-- `SiteDomain` — hostname (globally unique), brand_id, is_primary, ssl_verified, verified_at
-- `SiteDeployment` — brand_id, deployed_by, page_count, status (pending|running|complete|failed), deployed_at, notes
-- `PageCache` — brand_id, slug, rendered_html, etag, cached_at, invalidated_at (unique on BrandId+Slug)
-- `SiteVisit` — brand_id, slug, referrer, user_agent, ip_hash (SHA-256), visited_at
-
-### EF Core
-- Migration `CmsRendererHub` created — creates `site_domains`, `site_deployments`, `page_caches`, `site_visits` tables
-- `site_domains.hostname` has global unique index (hostnames are globally unique across all tenants)
-- `page_caches` has unique index `(BrandId, Slug)` — enforces one cache entry per page per brand
-- All tables have `(TenantId, BrandId)` composite indexes + domain-specific indexes
-- All registered in `INucleusDbContext` interface + `NucleusDbContext` implementation
-
-### MediatR Commands (Nucleus.Application/CmsRendererHub/Commands/)
-- `DeploySiteCommand` — snapshots all published WebsitePages → PageCache; creates SiteDeployment record; upserts cache entries; marks status=complete|failed
-- `InvalidatePageCacheCommand` — sets InvalidatedAt on a specific BrandId+Slug cache entry; returns bool (found or not)
-- `MapCustomDomainCommand` — adds hostname→brand mapping; enforces global hostname uniqueness; demotes existing primary if IsPrimary=true
-- `VerifyDomainCommand` — DNS lookup stub (System.Net.Dns); sets SslVerified=true + stamps VerifiedAt on success
-
-### MediatR Queries (Nucleus.Application/CmsRendererHub/Queries/)
-- `GetPublicPageQuery` — cache hit path: checks PageCache first (InvalidatedAt==null); on miss: renders HTML from WebsitePage, writes PageCache, logs SiteVisit; returns PublicPageDto with Etag
-- `GetSiteDeployStatusQuery` — brand-scoped: published page count, cached page count, deploy history (20 most recent)
-- `GetSiteAnalyticsQuery` — brand-scoped: total visits, unique pages, top 10 pages, daily visit counts (configurable day window 1-365)
-- `GetCustomDomainQuery` — dual mode: list domains by BrandId (tenant-scoped) OR resolve BrandId from hostname (IgnoreQueryFilters, global lookup)
-
-### DTOs (Nucleus.Application/CmsRendererHub/DTOs/)
-- `SiteDomainDto` — id, brandId, hostname, isPrimary, sslVerified, verifiedAt, timestamps
-- `SiteDeploymentDto` — id, brandId, brandName, deployedBy, pageCount, status, deployedAt, notes, createdAt
-- `PublicPageDto` — slug, title, seoTitle, metaDescription, ogImage, schemaJson, renderedHtml, etag, cachedAt, servedFromCache
-- `SiteAnalyticsDto` — brandId, brandName, totalVisits, uniquePages, topPages (List<PageVisitSummary>), dailyVisits (List<DailyVisitCount>)
-- `SiteStatusDto` — brandId, brandName, publishedPageCount, cachedPageCount, lastDeployment, deployHistory
-
-### API Controller
-- `CmsController` — dual routing: public `/cms/{*slug}` (no auth) + management `/api/cms/*` (auth required)
-- `GET  /cms/{*slug}` — public page renderer; resolves brand from Host header; returns 200 HTML with ETag/Cache-Control; 304 on If-None-Match hit; 404 if not found/unpublished
-- `POST /api/cms/deploy` — deploy site, warm PageCache
-- `POST /api/cms/cache/invalidate` — invalidate slug cache entry
-- `GET  /api/cms/status?brandId=` — site status + deploy history
-- `GET  /api/cms/analytics?brandId=&days=30` — visit analytics
-- `GET  /api/cms/domains?brandId=` — list custom domains
-- `POST /api/cms/domains` — map custom domain
-- `POST /api/cms/domains/{id}/verify` — trigger DNS verification
-
-### Blazor Pages (all use CmsLayout — sky blue #0ea5e9 theme)
-- `/cms/sites` — deploy dashboard with stat cards (published/cached/last deploy), Deploy Site button, deployment history table
-- `/cms/domains` — domain list with hostname, primary badge, SSL verified status, Verify DNS button, Add Domain modal
-- `/cms/analytics` — visit analytics with stat cards, daily bar chart, top pages table with visit share bar
-
-### Layout
-- `CmsLayout.razor` — focus menu: Sites, Domains, Analytics — using `hub-focus-menu`/`hub-focus-item` CSS classes
-- Hub color: `#0ea5e9` (sky blue — distinct from all 5 existing hubs)
-- `ShellLayout.razor` — CMS hub pill added to hub-switcher
-
-### Key Technical Notes
-- Public renderer uses `IgnoreQueryFilters()` — Host-header brand resolution bypasses tenant filter (brand is the security boundary, not authenticated tenant)
-- IP addresses hashed with SHA-256 before storage (GDPR/privacy)
-- ETag format: first 16 hex chars of MD5 of rendered HTML content
-- Cache-Control: `public, max-age=300` on rendered pages (5-min browser cache)
-- Hostname validation: `Uri.CheckHostName()` must not return `Unknown`
-- Hostname uniqueness: global unique DB index + application-level check across ALL tenants (IgnoreQueryFilters)
-- RenderPage shared between DeploySiteCommand and GetPublicPageQuery — produces full HTML5 document
 
 ### Acceptance Criteria — ALL PASS ✅
 - [x] `dotnet build Nucleus.sln` — 0 errors, 0 warnings
@@ -131,39 +179,11 @@ A feature DOES NOT ship to Nucleus until it has been:
 - [x] `SiteDomain.hostname` lookup resolves correct BrandId from Host header
 - [x] `/cms/sites` Blazor page shows deploy history and status per brand
 - [x] `/cms/domains` Blazor page lists and verifies custom domains
-- [x] `src/cms/` deletion from SEO Hub confirmed in retirement-checklist.md
 
 ---
 
 ## Sprint 28 — Studio Hub (COMPLETE ✅)
-
-**Build status:** `dotnet build Nucleus.sln` → 0 errors, 0 warnings
-**Test status:** `dotnet test` → 5/5 pass
-
-### Domain Entities (all inherit TenantEntity, all tenant-scoped)
-- `WebsitePage` — slug, title, page_type, html_content, seo_title, meta_description, og_image, status (draft|published|archived), published_at, schema_json (jsonb)
-- `DesignAsset` — name, asset_type (image|document|font|svg|generated|other), url, width, height, file_size, uploaded_at, prompt_used, mime_type
-- `VideoAsset` — name, url, thumbnail_url, duration_seconds, platform (youtube|vimeo|heygen|cloudflare|local|other), uploaded_at, description
-
-### Acceptance Criteria — ALL PASS ✅
-- [x] `dotnet build Nucleus.sln` — 0 errors, 0 warnings
-- [x] `dotnet test` — 5/5 pass
-- [x] EF migration `StudioHub` created (3 tables: website_pages, design_assets, video_assets)
-- [x] `POST /api/studio/pages` creates WebsitePage for tenant (returns 201 + id)
-- [x] `PUT /api/studio/pages/{id}/publish` sets status=published + published_at
-- [x] `GET /api/studio/assets` returns asset library scoped to tenant
-
----
-
 ## Sprint 27 — Authority Hub (COMPLETE ✅)
-
-### Acceptance Criteria — ALL PASS ✅
-- [x] `dotnet build Nucleus.sln` — 0 errors, 0 warnings
-- [x] `dotnet test` — 5/5 pass
-- [x] EF migration `AuthorityHub` applies cleanly (4 tables created with indexes)
-
----
-
 ## Sprint 26 — Distribution Hub (COMPLETE ✅)
 ## Sprint 25 — Search Hub (COMPLETE ✅)
 ## Sprint 24 — Content Hub (COMPLETE ✅)
@@ -222,6 +242,14 @@ A feature DOES NOT ship to Nucleus until it has been:
 - Site visit analytics (30-day window, top pages, daily chart)
 - `CmsController` at `/cms/{slug}` (public) + `/api/cms/*` (auth)
 
+### Finder Hub (Sprint 30)
+- Quiz/product-finder builder (multi-step with options)
+- Result condition matching (JSON conditions, exact + OR)
+- Anonymous session tracking + conversion recording
+- Daily analytics (starts/completions/conversions)
+- Embeddable widget via EmbedToken (no auth required)
+- `FinderController` at `/api/finder`
+
 ### Infrastructure
 - GitHub Actions CI (build + test on every PR)
 - Sentry error monitoring
@@ -233,14 +261,21 @@ A feature DOES NOT ship to Nucleus until it has been:
 
 ---
 
-## Sprint 30+ Roadmap
+## Sprint 31+ Roadmap
 
-### Sprint 30 — Studio Hub v2 + Plan Gates
+### Sprint 31 — Studio Hub v2 + Plan Gates
 - Video Library Blazor page (/studio/videos)
 - GET /api/studio/pages/{id} — full page detail endpoint for editor pre-fill
 - PUT /api/studio/pages/{id} — update page content endpoint
 - Plan gates: TenantPlanService enforcement for all hubs
 - Flux API real integration (replace picsum stub)
+
+### Sprint 32+ — Finder Hub v2
+- GHL lead capture via Hangfire job on conversion
+- A/B testing (agency plan)
+- Analytics export (CSV)
+- White-label embed (agency plan)
+- Custom result conditions UI
 
 ### Ongoing — Infrastructure
 - Redis (when scaling to 2+ Railway instances)
@@ -271,6 +306,6 @@ Sprint worker + maintenance pipeline live on master (commit 23db922).
 | SMTP_HOST/PORT/USER/PASS/FROM | Live | Transactional email |
 | DATAFORSEO_LOGIN / PASSWORD | Live | Keyword ranks |
 | SUPER_ADMIN_EMAIL | Live | Admin panel seed |
-| REDIS_URL | Pending | Distributed cache (Sprint 30+) |
+| REDIS_URL | Pending | Distributed cache (Sprint 31+) |
 | GOOGLE_CLIENT_ID | Pending | Google Sign-In |
 | RAILWAY_STAGING_DEPLOY_WEBHOOK | Pending | GitHub Actions → staging deploy trigger |

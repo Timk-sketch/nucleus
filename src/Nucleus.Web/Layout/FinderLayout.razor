@@ -1,0 +1,38 @@
+@inherits LayoutComponentBase
+
+<ShellLayout Hub="finder" HubColor="#7c3aed" HubName="Finder Hub">
+    <FocusMenu>
+        <nav class="hub-focus-menu">
+            <NavLink href="/finder" class="hub-focus-item" Match="NavLinkMatch.All">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/>
+                    <path d="M9 9h6M9 12h6M9 15h4"/>
+                </svg>
+                Finders
+            </NavLink>
+            <NavLink href="/finder/builder" class="hub-focus-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 20h9"/>
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                </svg>
+                Builder
+            </NavLink>
+            <NavLink href="/finder/preview" class="hub-focus-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                </svg>
+                Preview
+            </NavLink>
+            <NavLink href="/finder/analytics" class="hub-focus-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="20" x2="18" y2="10"/>
+                    <line x1="12" y1="20" x2="12" y2="4"/>
+                    <line x1="6" y1="20" x2="6" y2="14"/>
+                </svg>
+                Analytics
+            </NavLink>
+        </nav>
+    </FocusMenu>
+    <ChildContent>@Body</ChildContent>
+</ShellLayout>

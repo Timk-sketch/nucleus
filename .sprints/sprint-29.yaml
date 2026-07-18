@@ -1,7 +1,7 @@
 sprint: 29
 name: CMS Renderer Hub
 namespace: CmsRendererHub
-status: in_progress
+status: complete
 
 # Dependency: Sprint 28 (Studio Hub) must be complete.
 # Studio Hub = admin editor. CMS Renderer = public delivery layer.
