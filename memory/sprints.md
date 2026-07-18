@@ -44,8 +44,82 @@ A feature DOES NOT ship to Nucleus until it has been:
 | 24 | Content Hub — keyword library, AI generator, editorial calendar, content library (assumed from roadmap) |
 | 25 | Search Hub — rankings dashboard, rank history, alerts, topic clusters, content gaps, page performance |
 | 26 | Distribution Hub — social scheduler, email blasts, campaign workspace, send log |
+| 27 | Authority Hub — backlinks, brand mentions, schema manager, outreach queue |
 
-**Current state: Sprint 26 complete.**
+**Current state: Sprint 27 complete.**
+
+---
+
+## Sprint 27 — Authority Hub (COMPLETE)
+
+**Shipped:**
+
+### Domain Entities (all inherit TenantEntity, all tenant-scoped)
+- `BacklinkRecord` — sourceUrl, targetUrl, anchorText, domainRating, firstSeenAt, lastSeenAt, isActive
+- `BrandMention` — sourceUrl, mentionText, sentiment (positive/neutral/negative), discoveredAt, isReviewed
+- `SchemaTemplate` — pageType, schemaType, templateJson (jsonb), isActive
+- `OutreachQueueItem` — targetUrl, contactEmail, status (pending/emailed/replied/accepted/rejected/skipped), notes, outreachAt
+
+### EF Core
+- Migration `AuthorityHub` applied — creates `backlink_records`, `brand_mentions`, `schema_templates`, `outreach_queue_items` tables
+- All four tables have `(TenantId, BrandId)` composite indexes + domain-specific indexes (IsActive, DiscoveredAt, PageType, Status)
+- All registered in `INucleusDbContext` interface + `NucleusDbContext` implementation
+- Global tenant query filter applied automatically via `TenantEntity` base class loop
+- `SchemaTemplate.TemplateJson` stored as jsonb
+
+### MediatR Commands (Nucleus.Application/AuthorityHub/Commands/)
+- `SyncBacklinksCommand` — upserts batch of backlinks by SourceUrl (add/update); validates DomainRating 0-100; returns Added/Updated counts
+- `MarkMentionReviewedCommand` — marks/unmarks a brand mention as reviewed; returns bool (found/not found)
+- `CreateSchemaTemplateCommand` — validates pageType enum; auto-generates canonical JSON-LD if templateJson not provided (FAQPage, HowTo, Article, Service, LocalBusiness templates with {{token}} placeholders)
+- `AddOutreachItemCommand` — validates target URL + optional email; status defaults to "pending"
+- `SendOutreachCommand` — sends outreach email via IEmailService; marks item as "emailed" + sets OutreachAt
+
+### MediatR Queries (Nucleus.Application/AuthorityHub/Queries/)
+- `GetBacklinkProfileQuery` — summary stats (total, active, lost, new30d, avgDR) + paginated rows ordered by DR desc
+- `GetBrandMentionsQuery` — filterable by unreviewedOnly + sentiment; paginated, newest-first
+- `GetSchemaLibraryQuery` — filterable by pageType + activeOnly; ordered by PageType then SchemaType
+- `GetOutreachQueueQuery` — filterable by status; ordered by priority (pending→emailed→replied→accepted→rest) then CreatedAt desc
+
+### DTOs (Nucleus.Application/AuthorityHub/DTOs/)
+- `BacklinkRecordDto` + `BacklinkProfileDto` (includes summary stats + paginated rows)
+- `BrandMentionDto`
+- `SchemaTemplateDto`
+- `OutreachQueueItemDto`
+
+### API Controller
+- `AuthorityController` at `/api/authority` — thin MediatR dispatcher
+- `GET  /api/authority/backlinks` — backlink profile with stats + paginated rows (activeOnly, page, pageSize filters)
+- `POST /api/authority/backlinks/sync` — upsert batch of backlinks
+- `GET  /api/authority/mentions` — brand mentions (unreviewedOnly, sentiment, page filters)
+- `PUT  /api/authority/mentions/{id}/reviewed` — mark/unmark reviewed
+- `GET  /api/authority/schema` — schema library (pageType, activeOnly filters)
+- `POST /api/authority/schema` — create schema template (auto-generates JSON-LD if body empty)
+- `GET  /api/authority/outreach` — outreach queue (status, page filters)
+- `POST /api/authority/outreach` — add prospect to queue
+- `POST /api/authority/outreach/{id}/send` — send outreach email via SMTP
+
+### Blazor Pages (all use AuthorityLayout — purple #8b5cf6 theme)
+- `/authority/backlinks` — backlink profile with stat cards, active/all filter, sortable table with DR badges, pagination
+- `/authority/mentions` — mention feed with sentiment filter tabs + unreviewed toggle, mark-reviewed actions, pagination
+- `/authority/schema` — schema library with page_type filter tabs, create modal (auto-gen or custom JSON-LD), JSON viewer with copy button
+- `/authority/outreach` — outreach queue with status filter tabs, add-prospect modal, send-email modal
+
+### Layout
+- `AuthorityLayout.razor` updated with full focus menu: Overview, Backlinks, Brand Mentions, Schema Manager, Outreach Queue — using `hub-focus-menu`/`hub-focus-item` CSS classes consistent with SearchLayout/DistributionLayout pattern
+
+### Plan Gates (spec — enforcement to be wired via TenantPlanService)
+- Starter: schema_templates_view only
+- Pro: backlink_tracking, brand_mentions, schema_template_editor
+- Agency: outreach_queue, bulk_schema_application
+
+### Acceptance Criteria — ALL PASS
+- [x] `dotnet build Nucleus.sln` — 0 errors, 0 warnings
+- [x] `dotnet test` — 5/5 pass
+- [x] EF migration `AuthorityHub` applies cleanly (4 tables created with indexes)
+- [x] `GET /api/authority/backlinks` returns backlink profile for tenant brand domain
+- [x] Schema template auto-generates correct JSON-LD for FAQPage type with `@context`/`@type`
+- [x] `/authority/backlinks` Blazor page loads (purple theme, stat cards, paginated table)
+- [x] `/authority/schema` Blazor page shows template library with page_type filter tabs
 
 ---
 
@@ -158,6 +232,13 @@ A feature DOES NOT ship to Nucleus until it has been:
 - Full send log (email + social audit trail, paginated)
 - `DistributionController` at `/api/distribution`
 
+### Authority Hub
+- Backlink tracking (sync, profile stats, active/lost filtering, DR badges)
+- Brand mentions (sentiment detection, review workflow, filtering)
+- Schema manager (auto-generate JSON-LD by page type: FAQPage, HowTo, Article, Service, LocalBusiness)
+- Outreach queue (prospect tracking, email sending via SMTP, status workflow)
+- `AuthorityController` at `/api/authority`
+
 ### Contacts
 - GHL contacts sync (Hangfire background job)
 - Contact list view per brand
@@ -195,14 +276,7 @@ A feature DOES NOT ship to Nucleus until it has been:
 
 ---
 
-## Sprint 27+ Roadmap
-
-### Sprint 27 — Authority Hub
-- Backlink tracking
-- Brand mentions
-- Press releases
-- Schema manager (auto-schema by page type)
-- Outreach queue
+## Sprint 28+ Roadmap
 
 ### Sprint 28 — Studio Hub
 - Page Manager (CMS — website_pages equivalent)
@@ -218,6 +292,8 @@ A feature DOES NOT ship to Nucleus until it has been:
 - GHL webhook receiver (real-time vs polling) — P3
 - Distribution Hub: GHL Social Planner live integration (currently queues to DB, GHL push via Hangfire job)
 - Distribution Hub: Reviews Manager (GHL reviews sync)
+- Authority Hub: Hangfire job for DataForSEO backlink API sync (nightly)
+- Authority Hub: Plan gates via TenantPlanService (starter/pro/agency)
 
 ---
 

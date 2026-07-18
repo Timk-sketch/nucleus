@@ -1,7 +1,7 @@
 sprint: 27
 name: Authority Hub
 namespace: AuthorityHub
-status: pending
+status: in_progress
 
 entities:
   - name: BacklinkRecord

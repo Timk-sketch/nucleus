@@ -1,3 +1,45 @@
 @inherits LayoutComponentBase
 
-<ShellLayout Hub="authority" HubColor="#8b5cf6" HubName="Authority Hub">@Body</ShellLayout>
+<ShellLayout Hub="authority" HubColor="#8b5cf6" HubName="Authority Hub">
+    <FocusMenu>
+        <nav class="hub-focus-menu">
+            <NavLink href="/authority" Match="NavLinkMatch.All" class="hub-focus-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7" rx="1"/>
+                    <rect x="14" y="3" width="7" height="7" rx="1"/>
+                    <rect x="3" y="14" width="7" height="7" rx="1"/>
+                    <rect x="14" y="14" width="7" height="7" rx="1"/>
+                </svg>
+                Overview
+            </NavLink>
+            <NavLink href="/authority/backlinks" class="hub-focus-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                </svg>
+                Backlinks
+            </NavLink>
+            <NavLink href="/authority/mentions" class="hub-focus-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                Brand Mentions
+            </NavLink>
+            <NavLink href="/authority/schema" class="hub-focus-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="16 18 22 12 16 6"/>
+                    <polyline points="8 6 2 12 8 18"/>
+                </svg>
+                Schema Manager
+            </NavLink>
+            <NavLink href="/authority/outreach" class="hub-focus-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="22" y1="2" x2="11" y2="13"/>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+                Outreach Queue
+            </NavLink>
+        </nav>
+    </FocusMenu>
+    <ChildContent>@Body</ChildContent>
+</ShellLayout>

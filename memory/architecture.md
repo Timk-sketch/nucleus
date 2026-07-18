@@ -73,7 +73,7 @@ Each hub's pages declare their layout:
 
 ---
 
-## Current Domain Entities (Sprint 26)
+## Current Domain Entities (Sprint 27)
 
 | Entity | Inherits | Key Fields |
 |--------|----------|------------|
@@ -90,6 +90,10 @@ Each hub's pages declare their layout:
 | EmailCampaignMessage | TenantEntity | CampaignId, BrandId, Subject, HtmlBody, SentAt, OpenCount, ClickCount, RecipientCount, Status |
 | SocialPost | TenantEntity | BrandId, Platform, Caption, ImageUrl, ScheduledAt, PublishedAt, Status, ExternalPostId, Provider |
 | SendLog | TenantEntity | BrandId, CampaignId?, SocialPostId?, Channel, RecipientCount, SentAt, Provider, Status |
+| BacklinkRecord | TenantEntity | BrandId, SourceUrl, TargetUrl, AnchorText, DomainRating, FirstSeenAt, LastSeenAt, IsActive |
+| BrandMention | TenantEntity | BrandId, SourceUrl, MentionText, Sentiment, DiscoveredAt, IsReviewed |
+| SchemaTemplate | TenantEntity | BrandId, PageType, SchemaType, TemplateJson (jsonb), IsActive |
+| OutreachQueueItem | TenantEntity | BrandId, TargetUrl, ContactEmail, Status, Notes, OutreachAt |
 | AuditLog | — | Actor, Action, EntityType, EntityId, DiffJson, Timestamp |
 | RefreshToken | — | UserId, Token, ExpiresAt, IsRevoked |
 
@@ -140,8 +144,24 @@ All jobs must have `[DisableConcurrentExecution(timeoutInSeconds: 300)]`.
 | Social Scheduling | 3/month | Unlimited | Unlimited |
 | Team members | 1 | 5 | Unlimited |
 | All 5 Service Hubs | Partial | Full | Full |
+| Backlink Tracking | — | Yes | Yes |
+| Brand Mentions | — | Yes | Yes |
+| Schema Editor | View | Edit | Bulk |
+| Outreach Queue | — | — | Yes |
 
 Feature gates checked via `TenantPlanService.CanUse(feature)` — never inline conditionals.
+
+---
+
+## Feature Isolation Rule (Authority Hub pattern)
+
+Each hub is a **fully self-contained vertical slice**:
+- Application layer: ALL files under `Nucleus.Application/{HubName}/` (Commands/, Queries/, DTOs/)
+- Controller: ONE file at `Nucleus.Api/Controllers/{Hub}Controller.cs`
+- Blazor pages: under `Nucleus.Web/Pages/{Hub}/`
+- Hub-specific interfaces (if any): `Nucleus.Application/{HubName}/Interfaces/`
+- NEVER import from another hub's namespace
+- Shared kernel only: `Nucleus.Application.Common.Interfaces` (INucleusDbContext, ICurrentTenantService, IAuditService, ITenantPlanService, IEmailService)
 
 ---
 
@@ -160,6 +180,7 @@ src/
     Auth/               ← login, register, JWT commands
     Brands/             ← brand CRUD + provisioning
     Common/             ← shared DTOs, interfaces (INucleusDbContext, ICurrentTenantService)
+    AuthorityHub/       ← Authority Hub commands/queries/DTOs (Sprint 27)
     Distribution/       ← Distribution Hub commands/queries/DTOs (Sprint 26)
     Search/             ← Search Hub commands/queries/DTOs (Sprint 25)
   Nucleus.Domain/

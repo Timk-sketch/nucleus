@@ -1,0 +1,322 @@
+@page "/authority/schema"
+@attribute [Authorize]
+@layout AuthorityLayout
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>Schema Manager — Authority Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Schema Manager</h1>
+        <p class="page-subtitle">Manage JSON-LD structured data templates by page type. Applies correct schema for Article, FAQPage, HowTo, Service, and LocalBusiness pages.</p>
+    </div>
+    <button class="btn-hub" @onclick="OpenCreateModal">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        New Template
+    </button>
+</div>
+
+@if (_brands.Count == 0 && !_loading)
+{
+    <div class="empty-state">No brands yet. <a href="/brands">Add a brand</a> to create schema templates.</div>
+}
+else
+{
+    <div class="brand-pill-row">
+        @foreach (var b in _brands)
+        {
+            <button class="brand-pill-btn @(_selectedBrand?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                    @onclick="() => SelectBrand(b)">
+                <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+                @b.Name
+            </button>
+        }
+    </div>
+}
+
+@if (_error != null)
+{
+    <div class="alert-error">@_error</div>
+}
+@if (_successMsg != null)
+{
+    <div class="alert-success">@_successMsg</div>
+}
+
+@if (_selectedBrand != null)
+{
+    <!-- Page type filter tabs -->
+    <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
+        @foreach (var pt in new[] { "all", "Article", "FAQPage", "HowTo", "Service", "LocalBusiness", "Product" })
+        {
+            <button class="brand-pill-btn @(_pageTypeFilter == pt ? "brand-pill-btn--active" : "")"
+                    style="font-size:12px;padding:5px 12px;"
+                    @onclick="() => SetPageTypeFilter(pt)">
+                @pt
+            </button>
+        }
+    </div>
+
+    @if (_loading)
+    {
+        <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+    }
+    else if (_templates.Count == 0)
+    {
+        <div class="empty-state">
+            No schema templates found.
+            <button class="btn-hub" style="margin-top:12px;" @onclick="OpenCreateModal">
+                Create your first template →
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Page Type</th>
+                        <th>Schema Type</th>
+                        <th>Status</th>
+                        <th>Updated</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var tmpl in _templates)
+                    {
+                        <tr>
+                            <td>
+                                <span style="font-weight:600;color:var(--hub-color);">@tmpl.PageType</span>
+                            </td>
+                            <td style="font-size:13px;font-family:monospace;color:var(--color-muted);">@tmpl.SchemaType</td>
+                            <td>
+                                <span class="status-badge status-badge--@(tmpl.IsActive ? "success" : "muted")">
+                                    @(tmpl.IsActive ? "Active" : "Inactive")
+                                </span>
+                            </td>
+                            <td style="font-size:12px;color:var(--color-muted);">@tmpl.UpdatedAt.ToString("MMM d, yyyy")</td>
+                            <td>
+                                <button class="btn-secondary" style="font-size:12px;padding:5px 10px;"
+                                        @onclick="() => ViewTemplate(tmpl)">
+                                    View JSON
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+<!-- Create Template Modal -->
+@if (_showCreateModal && _selectedBrand != null)
+{
+    <div class="modal-backdrop" @onclick="CloseCreateModal">
+        <div class="modal" style="max-width:560px;" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h2 class="modal-title">New Schema Template</h2>
+                <button class="modal-close" @onclick="CloseCreateModal">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Page Type</label>
+                    <select class="form-input" @bind="_newPageType" @bind:after="UpdateSchemaType">
+                        <option value="">Select page type…</option>
+                        <option value="Article">Article</option>
+                        <option value="FAQPage">FAQPage</option>
+                        <option value="HowTo">HowTo</option>
+                        <option value="Service">Service</option>
+                        <option value="LocalBusiness">LocalBusiness</option>
+                        <option value="Product">Product</option>
+                        <option value="WebPage">WebPage</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Schema Type (@@type value)</label>
+                    <input type="text" class="form-input" @bind="_newSchemaType" placeholder="e.g. FAQPage" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">JSON-LD Template <span style="font-size:11px;color:var(--color-muted);">(leave blank for auto-generated default)</span></label>
+                    <textarea class="form-input" rows="8"
+                              placeholder='Leave empty to auto-generate from page type'
+                              style="font-family:monospace;font-size:12px;resize:vertical;"
+                              @bind="_newTemplateJson"></textarea>
+                </div>
+                @if (_modalError != null)
+                {
+                    <div class="alert-error" style="margin-top:8px;">@_modalError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" @onclick="CloseCreateModal">Cancel</button>
+                <button class="btn-hub" @onclick="SubmitCreate" disabled="@_submitting">
+                    @if (_submitting) { <span>Creating…</span> } else { <span>Create Template</span> }
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- View JSON Modal -->
+@if (_viewTemplate != null)
+{
+    <div class="modal-backdrop" @onclick="() => _viewTemplate = null">
+        <div class="modal" style="max-width:700px;" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h2 class="modal-title">@_viewTemplate.PageType — @_viewTemplate.SchemaType</h2>
+                <button class="modal-close" @onclick="() => _viewTemplate = null">✕</button>
+            </div>
+            <div class="modal-body">
+                <pre style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;padding:16px;font-size:12px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;max-height:500px;overflow-y:auto;">@_viewTemplate.TemplateJson</pre>
+                <p style="font-size:12px;color:var(--color-muted);margin-top:12px;">
+                    Use {{token}} placeholders for runtime substitution. Deploy this JSON-LD via your CMS or page manager.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" @onclick="() => _viewTemplate = null">Close</button>
+                <button class="btn-hub" @onclick="() => CopyToClipboard(_viewTemplate.TemplateJson)">Copy JSON</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private List<SchemaTemplateItem> _templates = [];
+    private bool _loading;
+    private string? _error, _successMsg;
+    private string _pageTypeFilter = "all";
+
+    // Create modal
+    private bool _showCreateModal, _submitting;
+    private string? _modalError;
+    private string _newPageType = "";
+    private string _newSchemaType = "";
+    private string? _newTemplateJson;
+
+    // View modal
+    private SchemaTemplateItem? _viewTemplate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _error = _successMsg = null;
+        await LoadTemplates();
+    }
+
+    private async Task LoadTemplates()
+    {
+        if (_selectedBrand is null) return;
+        _loading = true;
+        _templates = [];
+        try
+        {
+            var pt = _pageTypeFilter == "all" ? "" : $"&pageType={_pageTypeFilter}";
+            var url = $"api/authority/schema?brandId={_selectedBrand.Id}{pt}";
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<List<SchemaTemplateItem>>>(url);
+            _templates = resp?.Data ?? [];
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task SetPageTypeFilter(string pt)
+    {
+        _pageTypeFilter = pt;
+        await LoadTemplates();
+    }
+
+    private void OpenCreateModal()
+    {
+        _newPageType = "";
+        _newSchemaType = "";
+        _newTemplateJson = null;
+        _modalError = null;
+        _showCreateModal = true;
+    }
+
+    private void CloseCreateModal()
+    {
+        _showCreateModal = false;
+        _modalError = null;
+    }
+
+    private void UpdateSchemaType()
+    {
+        // Auto-populate SchemaType from PageType if not yet customised
+        if (string.IsNullOrWhiteSpace(_newSchemaType) || _newSchemaType == _newPageType)
+            _newSchemaType = _newPageType;
+    }
+
+    private async Task SubmitCreate()
+    {
+        if (_selectedBrand is null) return;
+        _modalError = null;
+
+        if (string.IsNullOrWhiteSpace(_newPageType)) { _modalError = "Page type is required."; return; }
+        if (string.IsNullOrWhiteSpace(_newSchemaType)) { _modalError = "Schema type is required."; return; }
+
+        _submitting = true;
+        try
+        {
+            var payload = new
+            {
+                BrandId = _selectedBrand.Id,
+                PageType = _newPageType,
+                SchemaType = _newSchemaType,
+                TemplateJson = string.IsNullOrWhiteSpace(_newTemplateJson) ? (string?)null : _newTemplateJson,
+                IsActive = true,
+            };
+            var resp = await Http.PostAsJsonAsync("api/authority/schema", payload);
+            if (resp.IsSuccessStatusCode)
+            {
+                _successMsg = $"Schema template for '{_newPageType}' created successfully.";
+                _showCreateModal = false;
+                await LoadTemplates();
+            }
+            else
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                _modalError = $"Failed: {err}";
+            }
+        }
+        catch (Exception ex) { _modalError = ex.Message; }
+        finally { _submitting = false; }
+    }
+
+    private void ViewTemplate(SchemaTemplateItem tmpl) => _viewTemplate = tmpl;
+
+    private async Task CopyToClipboard(string text)
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", text); _successMsg = "Copied to clipboard!"; }
+        catch { /* clipboard may not be available */ }
+    }
+
+    // DTOs
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; public string PrimaryColor { get; set; } = "#8b5cf6"; }
+    private class SchemaTemplateItem
+    {
+        public Guid Id { get; set; }
+        public string PageType { get; set; } = "";
+        public string SchemaType { get; set; } = "";
+        public string TemplateJson { get; set; } = "{}";
+        public bool IsActive { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+        public DateTimeOffset UpdatedAt { get; set; }
+    }
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

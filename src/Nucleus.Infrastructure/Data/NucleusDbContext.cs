@@ -29,6 +29,12 @@ public class NucleusDbContext(
     public DbSet<EmailCampaignMessage> EmailCampaignMessages => Set<EmailCampaignMessage>();
     public DbSet<SendLog> SendLogs => Set<SendLog>();
 
+    // Sprint 27 — Authority Hub
+    public DbSet<BacklinkRecord> BacklinkRecords => Set<BacklinkRecord>();
+    public DbSet<BrandMention> BrandMentions => Set<BrandMention>();
+    public DbSet<SchemaTemplate> SchemaTemplates => Set<SchemaTemplate>();
+    public DbSet<OutreachQueueItem> OutreachQueueItems => Set<OutreachQueueItem>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -244,6 +250,67 @@ public class NucleusDbContext(
         });
 
         // ── End Sprint 26 ─────────────────────────────────────────────────
+
+        // ── Sprint 27: Authority Hub entities ─────────────────────────────
+
+        builder.Entity<BacklinkRecord>(e =>
+        {
+            e.ToTable("backlink_records");
+            e.HasKey(b => b.Id);
+            e.HasIndex(b => b.TenantId);
+            e.HasIndex(b => new { b.TenantId, b.BrandId });
+            e.HasIndex(b => new { b.BrandId, b.IsActive });
+            e.HasIndex(b => new { b.BrandId, b.FirstSeenAt });
+            e.Property(b => b.SourceUrl).HasMaxLength(1000).IsRequired();
+            e.Property(b => b.TargetUrl).HasMaxLength(1000).IsRequired();
+            e.Property(b => b.AnchorText).HasMaxLength(500);
+            e.Property(b => b.DomainRating).HasColumnType("decimal(5,2)");
+            e.HasOne(b => b.Brand).WithMany().HasForeignKey(b => b.BrandId);
+        });
+
+        builder.Entity<BrandMention>(e =>
+        {
+            e.ToTable("brand_mentions");
+            e.HasKey(m => m.Id);
+            e.HasIndex(m => m.TenantId);
+            e.HasIndex(m => new { m.TenantId, m.BrandId });
+            e.HasIndex(m => new { m.BrandId, m.IsReviewed });
+            e.HasIndex(m => new { m.BrandId, m.DiscoveredAt });
+            e.Property(m => m.SourceUrl).HasMaxLength(1000).IsRequired();
+            e.Property(m => m.MentionText).HasMaxLength(2000).IsRequired();
+            e.Property(m => m.Sentiment).HasMaxLength(20).HasDefaultValue("neutral");
+            e.HasOne(m => m.Brand).WithMany().HasForeignKey(m => m.BrandId);
+        });
+
+        builder.Entity<SchemaTemplate>(e =>
+        {
+            e.ToTable("schema_templates");
+            e.HasKey(s => s.Id);
+            e.HasIndex(s => s.TenantId);
+            e.HasIndex(s => new { s.TenantId, s.BrandId });
+            e.HasIndex(s => new { s.BrandId, s.PageType });
+            e.HasIndex(s => new { s.BrandId, s.IsActive });
+            e.Property(s => s.PageType).HasMaxLength(100).IsRequired();
+            e.Property(s => s.SchemaType).HasMaxLength(100).IsRequired();
+            e.Property(s => s.TemplateJson).HasColumnType("jsonb").HasDefaultValue("{}");
+            e.HasOne(s => s.Brand).WithMany().HasForeignKey(s => s.BrandId);
+        });
+
+        builder.Entity<OutreachQueueItem>(e =>
+        {
+            e.ToTable("outreach_queue_items");
+            e.HasKey(o => o.Id);
+            e.HasIndex(o => o.TenantId);
+            e.HasIndex(o => new { o.TenantId, o.BrandId });
+            e.HasIndex(o => new { o.BrandId, o.Status });
+            e.Property(o => o.TargetUrl).HasMaxLength(1000).IsRequired();
+            e.Property(o => o.ContactEmail).HasMaxLength(300);
+            e.Property(o => o.Status).HasMaxLength(50).HasDefaultValue("pending");
+            e.Property(o => o.Notes).HasMaxLength(2000);
+            e.HasOne(o => o.Brand).WithMany().HasForeignKey(o => o.BrandId);
+        });
+
+        // ── End Sprint 27 ─────────────────────────────────────────────────
 
         // Global tenant query filter on all TenantEntity subclasses
         var tenantId = tenantService.TenantId;

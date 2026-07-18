@@ -21,5 +21,11 @@ public interface INucleusDbContext
     DbSet<EmailCampaignMessage> EmailCampaignMessages { get; }
     DbSet<SendLog> SendLogs { get; }
 
+    // Sprint 27 — Authority Hub
+    DbSet<BacklinkRecord> BacklinkRecords { get; }
+    DbSet<BrandMention> BrandMentions { get; }
+    DbSet<SchemaTemplate> SchemaTemplates { get; }
+    DbSet<OutreachQueueItem> OutreachQueueItems { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

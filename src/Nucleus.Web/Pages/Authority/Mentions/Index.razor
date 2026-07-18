@@ -1,0 +1,277 @@
+@page "/authority/mentions"
+@attribute [Authorize]
+@layout AuthorityLayout
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>Brand Mentions — Authority Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Brand Mentions</h1>
+        <p class="page-subtitle">Track every mention of your brand across the web — linked and unlinked.</p>
+    </div>
+</div>
+
+@if (_brands.Count == 0 && !_loading)
+{
+    <div class="empty-state">No brands yet. <a href="/brands">Add a brand</a> to start tracking mentions.</div>
+}
+else
+{
+    <div class="brand-pill-row">
+        @foreach (var b in _brands)
+        {
+            <button class="brand-pill-btn @(_selectedBrand?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                    @onclick="() => SelectBrand(b)">
+                <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+                @b.Name
+            </button>
+        }
+    </div>
+}
+
+@if (_error != null)
+{
+    <div class="alert-error">@_error</div>
+}
+@if (_successMsg != null)
+{
+    <div class="alert-success">@_successMsg</div>
+}
+
+@if (_selectedBrand != null)
+{
+    <!-- Filters row -->
+    <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:center;">
+        <div style="display:flex;gap:6px;">
+            <span style="font-size:13px;color:var(--color-muted);line-height:30px;">Sentiment:</span>
+            @foreach (var s in new[] { "all", "positive", "neutral", "negative" })
+            {
+                <button class="brand-pill-btn @(_sentimentFilter == s ? "brand-pill-btn--active" : "")"
+                        style="font-size:12px;padding:4px 10px;"
+                        @onclick="() => SetSentimentFilter(s)">
+                    @SentimentLabel(s)
+                </button>
+            }
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--color-muted);cursor:pointer;">
+            <input type="checkbox" @bind="_unreviewedOnly" @bind:after="LoadMentions" />
+            Unreviewed only
+        </label>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+    }
+    else if (_mentions.Count == 0)
+    {
+        <div class="empty-state">
+            No mentions found.
+            @if (_unreviewedOnly)
+            {
+                <span> Try removing the "unreviewed only" filter.</span>
+            }
+        </div>
+    }
+    else
+    {
+        <div style="display:flex;flex-direction:column;gap:12px;">
+            @foreach (var mention in _mentions)
+            {
+                <div class="table-container" style="padding:16px 18px;">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+                        <div style="flex:1;min-width:0;">
+                            <!-- Source link -->
+                            <a href="@mention.SourceUrl" target="_blank" rel="noopener"
+                               style="font-size:12px;color:var(--hub-color);display:block;margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                               title="@mention.SourceUrl">
+                                @TruncateUrl(mention.SourceUrl)
+                            </a>
+                            <!-- Mention excerpt -->
+                            <p style="font-size:13px;color:var(--color-text);margin:0 0 8px 0;line-height:1.5;">
+                                "@mention.MentionText"
+                            </p>
+                            <!-- Meta row -->
+                            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                                <span class="status-badge status-badge--@SentimentClass(mention.Sentiment)">
+                                    @SentimentIcon(mention.Sentiment) @mention.Sentiment
+                                </span>
+                                <span style="font-size:11px;color:var(--color-muted);">
+                                    @mention.DiscoveredAt.ToString("MMM d, yyyy")
+                                </span>
+                                @if (mention.IsReviewed)
+                                {
+                                    <span style="font-size:11px;color:#16a34a;">✓ Reviewed</span>
+                                }
+                            </div>
+                        </div>
+                        <!-- Actions -->
+                        <div style="flex-shrink:0;">
+                            @if (!mention.IsReviewed)
+                            {
+                                <button class="btn-hub" style="font-size:12px;padding:5px 12px;"
+                                        @onclick="() => MarkReviewed(mention.Id)">
+                                    Mark Reviewed
+                                </button>
+                            }
+                            else
+                            {
+                                <button class="btn-secondary" style="font-size:12px;padding:5px 12px;"
+                                        @onclick="() => MarkUnreviewed(mention.Id)">
+                                    Unmark
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- Pagination -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;">
+            <span style="font-size:13px;color:var(--color-muted);">Page @_page — @_mentions.Count result(s)</span>
+            <div style="display:flex;gap:8px;">
+                <button class="btn-secondary" @onclick="PrevPage" disabled="@(_page <= 1 || _loading)">← Prev</button>
+                <button class="btn-secondary" @onclick="NextPage" disabled="@(_mentions.Count < _pageSize || _loading)">Next →</button>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private List<MentionItem> _mentions = [];
+    private bool _loading, _unreviewedOnly;
+    private string? _error, _successMsg;
+    private string _sentimentFilter = "all";
+    private int _page = 1, _pageSize = 50;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _page = 1;
+        _error = _successMsg = null;
+        await LoadMentions();
+    }
+
+    private async Task LoadMentions()
+    {
+        if (_selectedBrand is null) return;
+        _loading = true;
+        _mentions = [];
+        try
+        {
+            var sentiment = _sentimentFilter == "all" ? "" : _sentimentFilter;
+            var url = $"api/authority/mentions?brandId={_selectedBrand.Id}&unreviewedOnly={_unreviewedOnly}&page={_page}&pageSize={_pageSize}"
+                + (string.IsNullOrEmpty(sentiment) ? "" : $"&sentiment={sentiment}");
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<List<MentionItem>>>(url);
+            _mentions = resp?.Data ?? [];
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task SetSentimentFilter(string s)
+    {
+        _sentimentFilter = s;
+        _page = 1;
+        await LoadMentions();
+    }
+
+    private async Task MarkReviewed(Guid id)
+    {
+        _successMsg = _error = null;
+        try
+        {
+            var resp = await Http.PutAsJsonAsync($"api/authority/mentions/{id}/reviewed", new { IsReviewed = true });
+            if (resp.IsSuccessStatusCode)
+            {
+                var m = _mentions.FirstOrDefault(x => x.Id == id);
+                if (m != null) m.IsReviewed = true;
+                _successMsg = "Mention marked as reviewed.";
+            }
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task MarkUnreviewed(Guid id)
+    {
+        _successMsg = _error = null;
+        try
+        {
+            var resp = await Http.PutAsJsonAsync($"api/authority/mentions/{id}/reviewed", new { IsReviewed = false });
+            if (resp.IsSuccessStatusCode)
+            {
+                var m = _mentions.FirstOrDefault(x => x.Id == id);
+                if (m != null) m.IsReviewed = false;
+            }
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task PrevPage()
+    {
+        if (_page <= 1) return;
+        _page--;
+        await LoadMentions();
+    }
+
+    private async Task NextPage()
+    {
+        _page++;
+        await LoadMentions();
+    }
+
+    private static string TruncateUrl(string url)
+    {
+        if (url.Length <= 55) return url;
+        try { var uri = new Uri(url); return uri.Host + (uri.AbsolutePath.Length > 25 ? uri.AbsolutePath[..25] + "…" : uri.AbsolutePath); }
+        catch { return url[..52] + "…"; }
+    }
+
+    private static string SentimentLabel(string s) => s switch
+    {
+        "all" => "All",
+        "positive" => "👍 Positive",
+        "neutral" => "➖ Neutral",
+        "negative" => "👎 Negative",
+        _ => s,
+    };
+
+    private static string SentimentClass(string s) => s switch
+    {
+        "positive" => "success",
+        "negative" => "danger",
+        _ => "info",
+    };
+
+    private static string SentimentIcon(string s) => s switch
+    {
+        "positive" => "👍",
+        "negative" => "👎",
+        _ => "➖",
+    };
+
+    // DTOs
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; public string PrimaryColor { get; set; } = "#8b5cf6"; }
+    private class MentionItem
+    {
+        public Guid Id { get; set; }
+        public string SourceUrl { get; set; } = "";
+        public string MentionText { get; set; } = "";
+        public string Sentiment { get; set; } = "neutral";
+        public DateTimeOffset DiscoveredAt { get; set; }
+        public bool IsReviewed { get; set; }
+    }
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

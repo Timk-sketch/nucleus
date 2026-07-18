@@ -1,0 +1,420 @@
+@page "/authority/outreach"
+@attribute [Authorize]
+@layout AuthorityLayout
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>Outreach Queue — Authority Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Outreach Queue</h1>
+        <p class="page-subtitle">Manage link-building and PR outreach prospects with status tracking per contact.</p>
+    </div>
+    <button class="btn-hub" @onclick="OpenAddModal">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Add Prospect
+    </button>
+</div>
+
+@if (_brands.Count == 0 && !_loading)
+{
+    <div class="empty-state">No brands yet. <a href="/brands">Add a brand</a> to start building your outreach queue.</div>
+}
+else
+{
+    <div class="brand-pill-row">
+        @foreach (var b in _brands)
+        {
+            <button class="brand-pill-btn @(_selectedBrand?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                    @onclick="() => SelectBrand(b)">
+                <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+                @b.Name
+            </button>
+        }
+    </div>
+}
+
+@if (_error != null)
+{
+    <div class="alert-error">@_error</div>
+}
+@if (_successMsg != null)
+{
+    <div class="alert-success">@_successMsg</div>
+}
+
+@if (_selectedBrand != null)
+{
+    <!-- Status filter tabs -->
+    <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
+        @foreach (var status in new[] { "all", "pending", "emailed", "replied", "accepted", "rejected", "skipped" })
+        {
+            <button class="brand-pill-btn @(_statusFilter == status ? "brand-pill-btn--active" : "")"
+                    style="font-size:12px;padding:5px 12px;"
+                    @onclick="() => SetStatusFilter(status)">
+                @StatusLabel(status) @if (status != "all") { <span style="margin-left:4px;">(@CountByStatus(status))</span> }
+            </button>
+        }
+    </div>
+
+    @if (_loading)
+    {
+        <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+    }
+    else if (_items.Count == 0)
+    {
+        <div class="empty-state">
+            No outreach prospects in this queue.
+            <button class="btn-hub" style="margin-top:12px;" @onclick="OpenAddModal">Add your first prospect →</button>
+        </div>
+    }
+    else
+    {
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Target URL</th>
+                        <th>Contact Email</th>
+                        <th>Status</th>
+                        <th>Notes</th>
+                        <th>Outreach Sent</th>
+                        <th>Added</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in _items)
+                    {
+                        <tr>
+                            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                <a href="@item.TargetUrl" target="_blank" rel="noopener"
+                                   style="color:var(--hub-color);font-size:12px;" title="@item.TargetUrl">
+                                    @TruncateUrl(item.TargetUrl)
+                                </a>
+                            </td>
+                            <td style="font-size:12px;">
+                                @if (!string.IsNullOrEmpty(item.ContactEmail))
+                                {
+                                    <a href="mailto:@item.ContactEmail" style="color:var(--hub-color);">@item.ContactEmail</a>
+                                }
+                                else
+                                {
+                                    <span style="color:var(--color-muted);">—</span>
+                                }
+                            </td>
+                            <td>
+                                <span class="status-badge status-badge--@StatusClass(item.Status)">@StatusLabel(item.Status)</span>
+                            </td>
+                            <td style="font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--color-muted);"
+                                title="@item.Notes">
+                                @(string.IsNullOrEmpty(item.Notes) ? "—" : item.Notes)
+                            </td>
+                            <td style="font-size:12px;color:var(--color-muted);">
+                                @(item.OutreachAt.HasValue ? item.OutreachAt.Value.ToString("MMM d, yyyy") : "—")
+                            </td>
+                            <td style="font-size:12px;color:var(--color-muted);">
+                                @item.CreatedAt.ToString("MMM d, yyyy")
+                            </td>
+                            <td>
+                                @if (item.Status == "pending" && !string.IsNullOrEmpty(item.ContactEmail))
+                                {
+                                    <button class="btn-hub" style="font-size:12px;padding:5px 10px;"
+                                            @onclick="() => OpenSendModal(item)">
+                                        Send Email
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;">
+            <span style="font-size:13px;color:var(--color-muted);">Page @_page</span>
+            <div style="display:flex;gap:8px;">
+                <button class="btn-secondary" @onclick="PrevPage" disabled="@(_page <= 1 || _loading)">← Prev</button>
+                <button class="btn-secondary" @onclick="NextPage" disabled="@(_items.Count < _pageSize || _loading)">Next →</button>
+            </div>
+        </div>
+    }
+}
+
+<!-- Add Prospect Modal -->
+@if (_showAddModal && _selectedBrand != null)
+{
+    <div class="modal-backdrop" @onclick="CloseAddModal">
+        <div class="modal" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h2 class="modal-title">Add Outreach Prospect</h2>
+                <button class="modal-close" @onclick="CloseAddModal">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Target URL *</label>
+                    <input type="url" class="form-input" placeholder="https://example.com/page-to-link-from"
+                           @bind="_addTargetUrl" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Contact Email</label>
+                    <input type="email" class="form-input" placeholder="editor@example.com"
+                           @bind="_addContactEmail" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notes</label>
+                    <textarea class="form-input" rows="3" placeholder="Pitch angle, relationship, context…"
+                              @bind="_addNotes" style="resize:vertical;"></textarea>
+                </div>
+                @if (_addModalError != null)
+                {
+                    <div class="alert-error" style="margin-top:8px;">@_addModalError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" @onclick="CloseAddModal">Cancel</button>
+                <button class="btn-hub" @onclick="SubmitAdd" disabled="@_submitting">
+                    @if (_submitting) { <span>Adding…</span> } else { <span>Add to Queue</span> }
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Send Outreach Email Modal -->
+@if (_sendItem != null)
+{
+    <div class="modal-backdrop" @onclick="CloseSendModal">
+        <div class="modal" style="max-width:560px;" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h2 class="modal-title">Send Outreach Email</h2>
+                <button class="modal-close" @onclick="CloseSendModal">✕</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size:13px;color:var(--color-muted);margin-bottom:16px;">
+                    Sending to: <strong>@_sendItem.ContactEmail</strong> — @TruncateUrl(_sendItem.TargetUrl)
+                </p>
+                <div class="form-group">
+                    <label class="form-label">Subject *</label>
+                    <input type="text" class="form-input" placeholder="Link opportunity — [Your Brand]"
+                           @bind="_sendSubject" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Message (HTML) *</label>
+                    <textarea class="form-input" rows="8" placeholder="<p>Hi there,</p><p>…</p>"
+                              style="font-family:monospace;font-size:12px;resize:vertical;"
+                              @bind="_sendBody"></textarea>
+                </div>
+                @if (_sendModalError != null)
+                {
+                    <div class="alert-error" style="margin-top:8px;">@_sendModalError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" @onclick="CloseSendModal">Cancel</button>
+                <button class="btn-hub" @onclick="SubmitSend" disabled="@_submitting">
+                    @if (_submitting) { <span>Sending…</span> } else { <span>Send Email</span> }
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private List<OutreachItem> _items = [];
+    private bool _loading;
+    private string? _error, _successMsg;
+    private string _statusFilter = "all";
+    private int _page = 1, _pageSize = 50;
+
+    // Add modal
+    private bool _showAddModal, _submitting;
+    private string? _addModalError;
+    private string _addTargetUrl = "";
+    private string? _addContactEmail, _addNotes;
+
+    // Send modal
+    private OutreachItem? _sendItem;
+    private string _sendSubject = "";
+    private string _sendBody = "";
+    private string? _sendModalError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _page = 1;
+        _error = _successMsg = null;
+        await LoadItems();
+    }
+
+    private async Task LoadItems()
+    {
+        if (_selectedBrand is null) return;
+        _loading = true;
+        _items = [];
+        try
+        {
+            var s = _statusFilter == "all" ? "" : $"&status={_statusFilter}";
+            var url = $"api/authority/outreach?brandId={_selectedBrand.Id}{s}&page={_page}&pageSize={_pageSize}";
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<List<OutreachItem>>>(url);
+            _items = resp?.Data ?? [];
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task SetStatusFilter(string status)
+    {
+        _statusFilter = status;
+        _page = 1;
+        await LoadItems();
+    }
+
+    private int CountByStatus(string status) =>
+        _items.Count(i => i.Status == status);
+
+    private async Task PrevPage() { if (_page <= 1) return; _page--; await LoadItems(); }
+    private async Task NextPage() { _page++; await LoadItems(); }
+
+    private void OpenAddModal()
+    {
+        _addTargetUrl = "";
+        _addContactEmail = null;
+        _addNotes = null;
+        _addModalError = null;
+        _showAddModal = true;
+    }
+
+    private void CloseAddModal() { _showAddModal = false; _addModalError = null; }
+
+    private async Task SubmitAdd()
+    {
+        if (_selectedBrand is null) return;
+        _addModalError = null;
+
+        if (string.IsNullOrWhiteSpace(_addTargetUrl)) { _addModalError = "Target URL is required."; return; }
+        if (!Uri.TryCreate(_addTargetUrl, UriKind.Absolute, out _)) { _addModalError = "Please enter a valid URL."; return; }
+
+        _submitting = true;
+        try
+        {
+            var payload = new
+            {
+                BrandId = _selectedBrand.Id,
+                TargetUrl = _addTargetUrl.Trim(),
+                ContactEmail = string.IsNullOrWhiteSpace(_addContactEmail) ? null : _addContactEmail.Trim(),
+                Notes = string.IsNullOrWhiteSpace(_addNotes) ? null : _addNotes.Trim(),
+            };
+            var resp = await Http.PostAsJsonAsync("api/authority/outreach", payload);
+            if (resp.IsSuccessStatusCode)
+            {
+                _successMsg = "Prospect added to outreach queue.";
+                _showAddModal = false;
+                await LoadItems();
+            }
+            else
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                _addModalError = $"Failed: {err}";
+            }
+        }
+        catch (Exception ex) { _addModalError = ex.Message; }
+        finally { _submitting = false; }
+    }
+
+    private void OpenSendModal(OutreachItem item)
+    {
+        _sendItem = item;
+        _sendSubject = "";
+        _sendBody = "";
+        _sendModalError = null;
+    }
+
+    private void CloseSendModal() { _sendItem = null; _sendModalError = null; }
+
+    private async Task SubmitSend()
+    {
+        if (_sendItem is null) return;
+        _sendModalError = null;
+
+        if (string.IsNullOrWhiteSpace(_sendSubject)) { _sendModalError = "Subject is required."; return; }
+        if (string.IsNullOrWhiteSpace(_sendBody)) { _sendModalError = "Message body is required."; return; }
+
+        _submitting = true;
+        try
+        {
+            var payload = new { Subject = _sendSubject, HtmlBody = _sendBody };
+            var resp = await Http.PostAsJsonAsync($"api/authority/outreach/{_sendItem.Id}/send", payload);
+            if (resp.IsSuccessStatusCode)
+            {
+                _successMsg = $"Outreach email sent to {_sendItem.ContactEmail}.";
+                _sendItem = null;
+                await LoadItems();
+            }
+            else
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                _sendModalError = $"Failed: {err}";
+            }
+        }
+        catch (Exception ex) { _sendModalError = ex.Message; }
+        finally { _submitting = false; }
+    }
+
+    private static string TruncateUrl(string url)
+    {
+        if (url.Length <= 45) return url;
+        try { var uri = new Uri(url); return uri.Host + (uri.AbsolutePath.Length > 20 ? uri.AbsolutePath[..20] + "…" : uri.AbsolutePath); }
+        catch { return url[..42] + "…"; }
+    }
+
+    private static string StatusLabel(string s) => s switch
+    {
+        "all" => "All",
+        "pending" => "Pending",
+        "emailed" => "Emailed",
+        "replied" => "Replied",
+        "accepted" => "Accepted",
+        "rejected" => "Rejected",
+        "skipped" => "Skipped",
+        _ => s,
+    };
+
+    private static string StatusClass(string s) => s switch
+    {
+        "pending" => "info",
+        "emailed" => "muted",
+        "replied" => "info",
+        "accepted" => "success",
+        "rejected" => "danger",
+        "skipped" => "muted",
+        _ => "muted",
+    };
+
+    // DTOs
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; public string PrimaryColor { get; set; } = "#8b5cf6"; }
+    private class OutreachItem
+    {
+        public Guid Id { get; set; }
+        public string TargetUrl { get; set; } = "";
+        public string? ContactEmail { get; set; }
+        public string Status { get; set; } = "pending";
+        public string? Notes { get; set; }
+        public DateTimeOffset? OutreachAt { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+    }
+    private record ApiWrapper<T>(bool Success, T? Data);
+}
