@@ -16,5 +16,10 @@ public interface INucleusDbContext
     DbSet<TopicCluster> TopicClusters { get; }
     DbSet<EmailCampaign> EmailCampaigns { get; }
 
+    // Sprint 26 — Distribution Hub
+    DbSet<SocialPost> SocialPosts { get; }
+    DbSet<EmailCampaignMessage> EmailCampaignMessages { get; }
+    DbSet<SendLog> SendLogs { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

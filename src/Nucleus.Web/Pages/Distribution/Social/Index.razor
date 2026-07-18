@@ -1,0 +1,337 @@
+@page "/distribution/social"
+@attribute [Authorize]
+@layout DistributionLayout
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>Social Scheduler — Distribution Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Social Scheduler</h1>
+        <p class="page-subtitle">Schedule and publish posts across social channels.</p>
+    </div>
+    <button class="btn-hub" @onclick="OpenNewPostModal">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Schedule Post
+    </button>
+</div>
+
+@if (_brands.Count == 0 && !_loading)
+{
+    <div class="empty-state">No brands yet. <a href="/brands">Add a brand</a> to start scheduling.</div>
+}
+else
+{
+    <div class="brand-pill-row">
+        @foreach (var b in _brands)
+        {
+            <button class="brand-pill-btn @(_selectedBrand?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                    @onclick="() => SelectBrand(b)">
+                <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+                @b.Name
+            </button>
+        }
+    </div>
+}
+
+@if (_error != null)
+{
+    <div class="alert-error">@_error</div>
+}
+@if (_successMsg != null)
+{
+    <div class="alert-success">@_successMsg</div>
+}
+
+@if (_selectedBrand != null)
+{
+    <!-- Platform filter tabs -->
+    <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
+        @foreach (var platform in new[] { "all", "facebook", "instagram", "twitter", "linkedin", "gmb" })
+        {
+            <button class="brand-pill-btn @(_platformFilter == platform ? "brand-pill-btn--active" : "")"
+                    @onclick="() => SetPlatformFilter(platform)"
+                    style="font-size:12px;padding:5px 12px;">
+                @PlatformLabel(platform)
+            </button>
+        }
+    </div>
+
+    @if (_loading)
+    {
+        <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+    }
+    else if (_posts.Count == 0)
+    {
+        <div class="empty-state">
+            No scheduled posts for this period.
+            <button class="btn-hub" style="margin-top:12px;" @onclick="OpenNewPostModal">Schedule your first post →</button>
+        </div>
+    }
+    else
+    {
+        <!-- Calendar-style grouped list -->
+        @foreach (var group in _posts.GroupBy(p => p.ScheduledAt?.Date ?? DateTime.MinValue).OrderBy(g => g.Key))
+        {
+            <div style="margin-bottom:24px;">
+                <div style="font-size:12px;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">
+                    @(group.Key == DateTime.MinValue ? "Unscheduled" : group.Key.ToString("dddd, MMMM d, yyyy"))
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                    @foreach (var post in group.OrderBy(p => p.ScheduledAt))
+                    {
+                        <div class="table-container" style="padding:14px 16px;display:flex;align-items:flex-start;gap:14px;">
+                            <div style="width:36px;height:36px;border-radius:8px;background:var(--hub-color-dim);color:var(--hub-color);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                @PlatformIcon(post.Platform)
+                            </div>
+                            <div style="flex:1;min-width:0;">
+                                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                                    <span style="font-size:12px;font-weight:600;text-transform:capitalize;color:var(--hub-color);">@post.Platform</span>
+                                    <span class="status-badge status-badge--@StatusClass(post.Status)">@post.Status</span>
+                                    @if (post.ScheduledAt.HasValue)
+                                    {
+                                        <span style="font-size:11px;color:var(--color-muted);">@post.ScheduledAt.Value.ToString("h:mm tt")</span>
+                                    }
+                                </div>
+                                <div style="font-size:13px;color:var(--color-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:600px;">
+                                    @post.Caption
+                                </div>
+                                @if (!string.IsNullOrEmpty(post.ErrorMessage))
+                                {
+                                    <div style="font-size:11px;color:var(--color-danger);margin-top:4px;">@post.ErrorMessage</div>
+                                }
+                            </div>
+                            @if (!string.IsNullOrEmpty(post.Provider))
+                            {
+                                <div style="font-size:11px;color:var(--color-muted);flex-shrink:0;">via @post.Provider</div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+}
+
+<!-- New Post Modal -->
+@if (_showNewPostModal && _selectedBrand != null)
+{
+    <div class="modal-backdrop" @onclick="CloseModal">
+        <div class="modal" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h2 class="modal-title">Schedule Social Post</h2>
+                <button class="modal-close" @onclick="CloseModal">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Platform</label>
+                    <select class="form-input" @bind="_newPlatform">
+                        <option value="">Select platform…</option>
+                        <option value="facebook">Facebook</option>
+                        <option value="instagram">Instagram</option>
+                        <option value="twitter">Twitter / X</option>
+                        <option value="linkedin">LinkedIn</option>
+                        <option value="gmb">Google My Business</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Caption</label>
+                    <textarea class="form-input" rows="4" placeholder="Write your post caption…"
+                              @bind="_newCaption" style="resize:vertical;"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Scheduled Date &amp; Time</label>
+                    <input type="datetime-local" class="form-input"
+                           value="@_newScheduledAt.ToString("yyyy-MM-ddTHH:mm")"
+                           @onchange="e => _newScheduledAt = DateTime.Parse(e.Value?.ToString() ?? DateTime.Now.ToString())" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Image URL (optional)</label>
+                    <input type="url" class="form-input" placeholder="https://…" @bind="_newImageUrl" />
+                </div>
+                @if (_modalError != null)
+                {
+                    <div class="alert-error" style="margin-top:8px;">@_modalError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" @onclick="CloseModal">Cancel</button>
+                <button class="btn-hub" @onclick="SubmitNewPost" disabled="@_submitting">
+                    @if (_submitting) { <span>Scheduling…</span> } else { <span>Schedule Post</span> }
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private List<SocialPostItem> _posts = [];
+    private bool _loading;
+    private string? _error, _successMsg;
+    private string _platformFilter = "all";
+
+    // Modal state
+    private bool _showNewPostModal;
+    private bool _submitting;
+    private string? _modalError;
+    private string _newPlatform = "";
+    private string _newCaption = "";
+    private DateTime _newScheduledAt = DateTime.Now.AddHours(1);
+    private string? _newImageUrl;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _error = _successMsg = null;
+        await LoadPosts();
+    }
+
+    private async Task LoadPosts()
+    {
+        if (_selectedBrand is null) return;
+        _loading = true;
+        _posts = [];
+        try
+        {
+            var url = $"api/distribution/social?brandId={_selectedBrand.Id}";
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<List<SocialPostItem>>>(url);
+            _posts = resp?.Data ?? [];
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task SetPlatformFilter(string platform)
+    {
+        _platformFilter = platform;
+        if (_selectedBrand is null) return;
+        _loading = true;
+        _posts = [];
+        try
+        {
+            var url = $"api/distribution/social?brandId={_selectedBrand.Id}"
+                + (platform != "all" ? $"&status=scheduled" : "");
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<List<SocialPostItem>>>(url);
+            var all = resp?.Data ?? [];
+            _posts = platform == "all" ? all : all.Where(p => p.Platform == platform).ToList();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private void OpenNewPostModal()
+    {
+        _newPlatform = "";
+        _newCaption = "";
+        _newScheduledAt = DateTime.Now.AddHours(1);
+        _newImageUrl = null;
+        _modalError = null;
+        _showNewPostModal = true;
+    }
+
+    private void CloseModal()
+    {
+        _showNewPostModal = false;
+        _modalError = null;
+    }
+
+    private async Task SubmitNewPost()
+    {
+        if (_selectedBrand is null) return;
+        _modalError = null;
+
+        if (string.IsNullOrWhiteSpace(_newPlatform)) { _modalError = "Platform is required."; return; }
+        if (string.IsNullOrWhiteSpace(_newCaption)) { _modalError = "Caption is required."; return; }
+        if (_newScheduledAt <= DateTime.Now) { _modalError = "Scheduled time must be in the future."; return; }
+
+        _submitting = true;
+        try
+        {
+            var payload = new
+            {
+                BrandId = _selectedBrand.Id,
+                Platform = _newPlatform,
+                Caption = _newCaption,
+                ScheduledAt = new DateTimeOffset(_newScheduledAt, TimeSpan.Zero),
+                ImageUrl = string.IsNullOrWhiteSpace(_newImageUrl) ? null : _newImageUrl,
+            };
+            var resp = await Http.PostAsJsonAsync("api/distribution/social", payload);
+            if (resp.IsSuccessStatusCode)
+            {
+                _successMsg = "Post scheduled successfully!";
+                _showNewPostModal = false;
+                await LoadPosts();
+            }
+            else
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                _modalError = $"Failed to schedule post: {err}";
+            }
+        }
+        catch (Exception ex) { _modalError = ex.Message; }
+        finally { _submitting = false; }
+    }
+
+    private static string StatusClass(string status) => status switch
+    {
+        "scheduled" => "info",
+        "published" => "success",
+        "failed"    => "danger",
+        "cancelled" => "muted",
+        _           => "muted",
+    };
+
+    private static string PlatformLabel(string p) => p switch
+    {
+        "all"       => "All",
+        "facebook"  => "Facebook",
+        "instagram" => "Instagram",
+        "twitter"   => "Twitter/X",
+        "linkedin"  => "LinkedIn",
+        "gmb"       => "Google",
+        _           => p,
+    };
+
+    private static RenderFragment PlatformIcon(string platform) => __builder =>
+    {
+        var icon = platform switch
+        {
+            "facebook"  => "f",
+            "instagram" => "ig",
+            "twitter"   => "𝕏",
+            "linkedin"  => "in",
+            "gmb"       => "G",
+            _           => "•",
+        };
+        __builder.AddContent(0, icon);
+    };
+
+    // DTOs
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; public string PrimaryColor { get; set; } = "#f59e0b"; }
+    private class SocialPostItem
+    {
+        public Guid Id { get; set; }
+        public string Platform { get; set; } = "";
+        public string Caption { get; set; } = "";
+        public string? ImageUrl { get; set; }
+        public DateTimeOffset? ScheduledAt { get; set; }
+        public DateTimeOffset? PublishedAt { get; set; }
+        public string Status { get; set; } = "";
+        public string? ExternalPostId { get; set; }
+        public string? ErrorMessage { get; set; }
+        public string? Provider { get; set; }
+    }
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

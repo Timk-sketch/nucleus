@@ -1,0 +1,357 @@
+@page "/distribution/email"
+@attribute [Authorize]
+@layout DistributionLayout
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>Email Blasts — Distribution Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Email Blasts</h1>
+        <p class="page-subtitle">Send broadcast emails to your brand's contact list.</p>
+    </div>
+    <button class="btn-hub" @onclick="OpenNewCampaignModal">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        New Campaign
+    </button>
+</div>
+
+@if (_brands.Count == 0 && !_loading)
+{
+    <div class="empty-state">No brands yet. <a href="/brands">Add a brand</a> to start sending.</div>
+}
+else
+{
+    <div class="brand-pill-row">
+        @foreach (var b in _brands)
+        {
+            <button class="brand-pill-btn @(_selectedBrand?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                    @onclick="() => SelectBrand(b)">
+                <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+                @b.Name
+            </button>
+        }
+    </div>
+}
+
+@if (_error != null)
+{
+    <div class="alert-error">@_error</div>
+}
+@if (_successMsg != null)
+{
+    <div class="alert-success">@_successMsg</div>
+}
+
+@if (_selectedBrand != null)
+{
+    @if (_loading)
+    {
+        <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+    }
+    else if (_campaigns.Count == 0)
+    {
+        <div class="empty-state">
+            No campaigns yet.
+            <button class="btn-hub" style="margin-top:12px;" @onclick="OpenNewCampaignModal">Create your first campaign →</button>
+        </div>
+    }
+    else
+    {
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Subject</th>
+                        <th>Status</th>
+                        <th>Recipients</th>
+                        <th>Opens</th>
+                        <th>Clicks</th>
+                        <th>Sent At</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in _campaigns)
+                    {
+                        <tr>
+                            <td style="font-weight:600;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">@c.Subject</td>
+                            <td><span class="status-badge status-badge--@StatusClass(c.Status)">@c.Status</span></td>
+                            <td>@c.RecipientCount</td>
+                            <td>
+                                @if (c.TotalRecipients > 0)
+                                {
+                                    <span>@c.TotalOpens <small style="color:var(--color-muted)">(@OpenRate(c)%)</small></span>
+                                }
+                                else { <span style="color:var(--color-muted)">—</span> }
+                            </td>
+                            <td>
+                                @if (c.TotalRecipients > 0)
+                                {
+                                    <span>@c.TotalClicks <small style="color:var(--color-muted)">(@ClickRate(c)%)</small></span>
+                                }
+                                else { <span style="color:var(--color-muted)">—</span> }
+                            </td>
+                            <td style="font-size:12px;color:var(--color-muted);">
+                                @(c.SentAt.HasValue ? c.SentAt.Value.ToString("MMM d, yyyy h:mm tt") : "Not sent")
+                            </td>
+                            <td>
+                                @if (c.Status == "draft")
+                                {
+                                    <button class="btn-hub" style="font-size:12px;padding:5px 10px;"
+                                            @onclick="() => OpenSendModal(c)">
+                                        Send →
+                                    </button>
+                                }
+                                else
+                                {
+                                    <a href="/distribution/campaigns?campaignId=@c.Id&brandId=@_selectedBrand.Id"
+                                       style="font-size:12px;color:var(--hub-color);">Stats →</a>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+<!-- New Campaign Modal -->
+@if (_showNewCampaignModal && _selectedBrand != null)
+{
+    <div class="modal-backdrop" @onclick="CloseModal">
+        <div class="modal" style="max-width:560px;" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h2 class="modal-title">New Email Campaign</h2>
+                <button class="modal-close" @onclick="CloseModal">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Subject Line</label>
+                    <input type="text" class="form-input" placeholder="e.g. Summer Sale — 20% Off" @bind="_newSubject" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email Body (HTML)</label>
+                    <textarea class="form-input" rows="8" placeholder="<p>Hello {{first_name}},…</p>"
+                              @bind="_newHtmlBody" style="resize:vertical;font-family:monospace;font-size:12px;"></textarea>
+                </div>
+                @if (_modalError != null)
+                {
+                    <div class="alert-error" style="margin-top:8px;">@_modalError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" @onclick="CloseModal">Cancel</button>
+                <button class="btn-hub" @onclick="SubmitNewCampaign" disabled="@_submitting">
+                    @if (_submitting) { <span>Creating…</span> } else { <span>Create Campaign</span> }
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Send Modal -->
+@if (_showSendModal && _sendingCampaign != null)
+{
+    <div class="modal-backdrop" @onclick="CloseSendModal">
+        <div class="modal" style="max-width:480px;" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h2 class="modal-title">Send Campaign</h2>
+                <button class="modal-close" @onclick="CloseSendModal">✕</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size:13px;margin-bottom:16px;color:var(--color-muted);">
+                    Sending: <strong style="color:var(--color-text);">@_sendingCampaign.Subject</strong>
+                </p>
+                <div class="form-group">
+                    <label class="form-label">Recipients (comma-separated emails)</label>
+                    <textarea class="form-input" rows="4"
+                              placeholder="alice@example.com, bob@example.com, …"
+                              @bind="_sendRecipients" style="resize:vertical;"></textarea>
+                    <div style="font-size:11px;color:var(--color-muted);margin-top:4px;">
+                        Tip: paste from a spreadsheet column — one email per line also works.
+                    </div>
+                </div>
+                @if (_sendModalError != null)
+                {
+                    <div class="alert-error" style="margin-top:8px;">@_sendModalError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" @onclick="CloseSendModal">Cancel</button>
+                <button class="btn-hub" @onclick="SubmitSend" disabled="@_submitting">
+                    @if (_submitting) { <span>Sending…</span> } else { <span>Send Now</span> }
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private List<CampaignItem> _campaigns = [];
+    private bool _loading;
+    private string? _error, _successMsg;
+
+    // New campaign modal
+    private bool _showNewCampaignModal;
+    private bool _submitting;
+    private string? _modalError;
+    private string _newSubject = "";
+    private string _newHtmlBody = "";
+
+    // Send modal
+    private bool _showSendModal;
+    private CampaignItem? _sendingCampaign;
+    private string _sendRecipients = "";
+    private string? _sendModalError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _error = _successMsg = null;
+        await LoadCampaigns();
+    }
+
+    private async Task LoadCampaigns()
+    {
+        if (_selectedBrand is null) return;
+        _loading = true;
+        _campaigns = [];
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<List<CampaignItem>>>(
+                $"api/distribution/email?brandId={_selectedBrand.Id}");
+            _campaigns = resp?.Data ?? [];
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private void OpenNewCampaignModal()
+    {
+        _newSubject = "";
+        _newHtmlBody = "<p>Hello,</p>\n<p></p>";
+        _modalError = null;
+        _showNewCampaignModal = true;
+    }
+
+    private void CloseModal() { _showNewCampaignModal = false; _modalError = null; }
+
+    private async Task SubmitNewCampaign()
+    {
+        if (_selectedBrand is null) return;
+        _modalError = null;
+        if (string.IsNullOrWhiteSpace(_newSubject)) { _modalError = "Subject is required."; return; }
+        if (string.IsNullOrWhiteSpace(_newHtmlBody)) { _modalError = "Email body is required."; return; }
+
+        _submitting = true;
+        try
+        {
+            var payload = new { BrandId = _selectedBrand.Id, Subject = _newSubject, HtmlBody = _newHtmlBody };
+            var resp = await Http.PostAsJsonAsync("api/distribution/email", payload);
+            if (resp.IsSuccessStatusCode)
+            {
+                _successMsg = "Campaign created!";
+                _showNewCampaignModal = false;
+                await LoadCampaigns();
+            }
+            else
+            {
+                _modalError = $"Error: {await resp.Content.ReadAsStringAsync()}";
+            }
+        }
+        catch (Exception ex) { _modalError = ex.Message; }
+        finally { _submitting = false; }
+    }
+
+    private void OpenSendModal(CampaignItem campaign)
+    {
+        _sendingCampaign = campaign;
+        _sendRecipients = "";
+        _sendModalError = null;
+        _showSendModal = true;
+    }
+
+    private void CloseSendModal() { _showSendModal = false; _sendModalError = null; _sendingCampaign = null; }
+
+    private async Task SubmitSend()
+    {
+        if (_selectedBrand is null || _sendingCampaign is null) return;
+        _sendModalError = null;
+
+        var emails = _sendRecipients
+            .Split(new[] { ',', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(e => e.Contains('@'))
+            .Distinct()
+            .ToList();
+
+        if (emails.Count == 0) { _sendModalError = "Enter at least one valid email address."; return; }
+
+        _submitting = true;
+        try
+        {
+            var payload = new
+            {
+                CampaignId = _sendingCampaign.Id,
+                BrandId = _selectedBrand.Id,
+                Recipients = emails,
+            };
+            var resp = await Http.PostAsJsonAsync("api/distribution/email/send", payload);
+            if (resp.IsSuccessStatusCode)
+            {
+                _successMsg = $"Campaign sent to {emails.Count} recipient(s)!";
+                _showSendModal = false;
+                await LoadCampaigns();
+            }
+            else
+            {
+                _sendModalError = $"Send failed: {await resp.Content.ReadAsStringAsync()}";
+            }
+        }
+        catch (Exception ex) { _sendModalError = ex.Message; }
+        finally { _submitting = false; }
+    }
+
+    private static string StatusClass(string s) => s switch
+    {
+        "sent"    => "success",
+        "sending" => "info",
+        "failed"  => "danger",
+        _         => "muted",
+    };
+
+    private static string OpenRate(CampaignItem c) =>
+        c.TotalRecipients > 0 ? Math.Round((double)c.TotalOpens / c.TotalRecipients * 100, 1).ToString("F1") : "0";
+
+    private static string ClickRate(CampaignItem c) =>
+        c.TotalRecipients > 0 ? Math.Round((double)c.TotalClicks / c.TotalRecipients * 100, 1).ToString("F1") : "0";
+
+    // DTOs
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; public string PrimaryColor { get; set; } = "#f59e0b"; }
+    private class CampaignItem
+    {
+        public Guid Id { get; set; }
+        public string Subject { get; set; } = "";
+        public string Status { get; set; } = "";
+        public int RecipientCount { get; set; }
+        public int TotalMessages { get; set; }
+        public int TotalOpens { get; set; }
+        public int TotalClicks { get; set; }
+        public int TotalRecipients { get; set; }
+        public DateTimeOffset? SentAt { get; set; }
+    }
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

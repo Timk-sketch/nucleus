@@ -1,0 +1,216 @@
+@page "/distribution/sendlog"
+@attribute [Authorize]
+@layout DistributionLayout
+@inject HttpClient Http
+
+<PageTitle>Send Log — Distribution Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Send Log</h1>
+        <p class="page-subtitle">Full audit trail of every email and social send.</p>
+    </div>
+</div>
+
+@if (_brands.Count == 0 && !_loading)
+{
+    <div class="empty-state">No brands yet. <a href="/brands">Add a brand</a> to get started.</div>
+}
+else
+{
+    <div class="brand-pill-row">
+        @foreach (var b in _brands)
+        {
+            <button class="brand-pill-btn @(_selectedBrand?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                    @onclick="() => SelectBrand(b)">
+                <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+                @b.Name
+            </button>
+        }
+    </div>
+}
+
+@if (_error != null) { <div class="alert-error">@_error</div> }
+
+@if (_selectedBrand != null)
+{
+    <!-- Channel filter -->
+    <div style="display:flex;gap:8px;margin-bottom:20px;align-items:center;flex-wrap:wrap;">
+        @foreach (var ch in new[] { "all", "email", "social", "sms" })
+        {
+            <button class="brand-pill-btn @(_channelFilter == ch ? "brand-pill-btn--active" : "")"
+                    @onclick="() => SetChannelFilter(ch)"
+                    style="font-size:12px;padding:5px 12px;">
+                @ch.ToUpperInvariant()
+            </button>
+        }
+        <span style="font-size:12px;color:var(--color-muted);margin-left:auto;">
+            @_totalCount total entries
+        </span>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+    }
+    else if (_logs.Count == 0)
+    {
+        <div class="empty-state">No send log entries yet. Send a campaign or schedule a social post to see activity here.</div>
+    }
+    else
+    {
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Channel</th>
+                        <th>Provider</th>
+                        <th>Recipients</th>
+                        <th>Status</th>
+                        <th>Sent At</th>
+                        <th>Note</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var log in _logs)
+                    {
+                        <tr>
+                            <td>
+                                <span style="display:inline-flex;align-items:center;gap:6px;">
+                                    @ChannelIcon(log.Channel)
+                                    <span style="font-weight:600;text-transform:capitalize;">@log.Channel</span>
+                                </span>
+                            </td>
+                            <td style="font-size:12px;color:var(--color-muted);">@log.Provider</td>
+                            <td>@log.RecipientCount</td>
+                            <td><span class="status-badge status-badge--@StatusClass(log.Status)">@log.Status</span></td>
+                            <td style="font-size:12px;color:var(--color-muted);">@log.SentAt.ToString("MMM d, yyyy h:mm tt")</td>
+                            <td style="font-size:12px;color:var(--color-danger);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                @if (!string.IsNullOrEmpty(log.ErrorMessage))
+                                {
+                                    <span title="@log.ErrorMessage">@log.ErrorMessage</span>
+                                }
+                                else if (log.CampaignId.HasValue)
+                                {
+                                    <a href="/distribution/campaigns?campaignId=@log.CampaignId&brandId=@_selectedBrand.Id"
+                                       style="color:var(--hub-color);">View campaign →</a>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        @if (_totalCount > _pageSize)
+        {
+            <div style="display:flex;justify-content:center;gap:8px;margin-top:20px;">
+                <button class="btn-secondary" @onclick="PrevPage" disabled="@(_page <= 1)">← Prev</button>
+                <span style="font-size:13px;line-height:32px;color:var(--color-muted);">
+                    Page @_page of @TotalPages
+                </span>
+                <button class="btn-secondary" @onclick="NextPage" disabled="@(_page >= TotalPages)">Next →</button>
+            </div>
+        }
+    }
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private List<SendLogItem> _logs = [];
+    private bool _loading;
+    private string? _error;
+    private string _channelFilter = "all";
+    private int _page = 1;
+    private int _pageSize = 50;
+    private int _totalCount;
+
+    private int TotalPages => (int)Math.Ceiling((double)_totalCount / _pageSize);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _page = 1;
+        _error = null;
+        await LoadLog();
+    }
+
+    private async Task LoadLog()
+    {
+        if (_selectedBrand is null) return;
+        _loading = true;
+        _logs = [];
+        try
+        {
+            var channel = _channelFilter == "all" ? "" : $"&channel={_channelFilter}";
+            var url = $"api/distribution/sendlog?brandId={_selectedBrand.Id}&page={_page}&pageSize={_pageSize}{channel}";
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<SendLogPage>>(url);
+            _logs = resp?.Data?.Items ?? [];
+            _totalCount = resp?.Data?.TotalCount ?? 0;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task SetChannelFilter(string ch)
+    {
+        _channelFilter = ch;
+        _page = 1;
+        await LoadLog();
+    }
+
+    private async Task PrevPage()
+    {
+        if (_page > 1) { _page--; await LoadLog(); }
+    }
+
+    private async Task NextPage()
+    {
+        if (_page < TotalPages) { _page++; await LoadLog(); }
+    }
+
+    private static string StatusClass(string s) => s switch
+    {
+        "sent"    => "success",
+        "partial" => "info",
+        "failed"  => "danger",
+        _         => "muted",
+    };
+
+    private static RenderFragment ChannelIcon(string channel) => __builder =>
+    {
+        var svg = channel switch
+        {
+            "email" => @"<svg width=""14"" height=""14"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2""><path d=""M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z""/><polyline points=""22,6 12,13 2,6""/></svg>",
+            "social" => @"<svg width=""14"" height=""14"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2""><circle cx=""18"" cy=""5"" r=""3""/><circle cx=""6"" cy=""12"" r=""3""/><circle cx=""18"" cy=""19"" r=""3""/><line x1=""8.59"" y1=""13.51"" x2=""15.42"" y2=""17.49""/><line x1=""15.41"" y1=""6.51"" x2=""8.59"" y2=""10.49""/></svg>",
+            _ => @"<svg width=""14"" height=""14"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2""><circle cx=""12"" cy=""12"" r=""10""/></svg>",
+        };
+        __builder.AddMarkupContent(0, svg);
+    };
+
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; public string PrimaryColor { get; set; } = "#f59e0b"; }
+    private class SendLogItem
+    {
+        public Guid Id { get; set; }
+        public Guid BrandId { get; set; }
+        public Guid? CampaignId { get; set; }
+        public Guid? SocialPostId { get; set; }
+        public string Channel { get; set; } = "";
+        public int RecipientCount { get; set; }
+        public DateTimeOffset SentAt { get; set; }
+        public string Provider { get; set; } = "";
+        public string Status { get; set; } = "";
+        public string? ErrorMessage { get; set; }
+    }
+    private class SendLogPage { public List<SendLogItem> Items { get; set; } = []; public int TotalCount { get; set; } }
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

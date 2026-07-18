@@ -24,6 +24,11 @@ public class NucleusDbContext(
     public DbSet<TopicCluster> TopicClusters => Set<TopicCluster>();
     public DbSet<EmailCampaign> EmailCampaigns => Set<EmailCampaign>();
 
+    // Sprint 26 — Distribution Hub
+    public DbSet<SocialPost> SocialPosts => Set<SocialPost>();
+    public DbSet<EmailCampaignMessage> EmailCampaignMessages => Set<EmailCampaignMessage>();
+    public DbSet<SendLog> SendLogs => Set<SendLog>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -190,6 +195,55 @@ public class NucleusDbContext(
             e.Property(a => a.EntityId).HasMaxLength(100);
             e.Property(a => a.Changes).HasColumnType("jsonb");
         });
+
+        // ── Sprint 26: Distribution Hub entities ──────────────────────────
+
+        builder.Entity<SocialPost>(e =>
+        {
+            e.ToTable("social_posts");
+            e.HasKey(p => p.Id);
+            e.HasIndex(p => p.TenantId);
+            e.HasIndex(p => new { p.TenantId, p.BrandId });
+            e.HasIndex(p => new { p.BrandId, p.ScheduledAt });
+            e.Property(p => p.Platform).HasMaxLength(50).IsRequired();
+            e.Property(p => p.Caption).HasMaxLength(2000).IsRequired();
+            e.Property(p => p.ImageUrl).HasMaxLength(500);
+            e.Property(p => p.Status).HasMaxLength(50).HasDefaultValue("draft");
+            e.Property(p => p.ExternalPostId).HasMaxLength(200);
+            e.Property(p => p.ErrorMessage).HasMaxLength(500);
+            e.Property(p => p.Provider).HasMaxLength(50);
+            e.HasOne(p => p.Brand).WithMany().HasForeignKey(p => p.BrandId);
+        });
+
+        builder.Entity<EmailCampaignMessage>(e =>
+        {
+            e.ToTable("email_campaign_messages");
+            e.HasKey(m => m.Id);
+            e.HasIndex(m => m.TenantId);
+            e.HasIndex(m => new { m.TenantId, m.BrandId });
+            e.HasIndex(m => m.CampaignId);
+            e.Property(m => m.Subject).HasMaxLength(500).IsRequired();
+            e.Property(m => m.Status).HasMaxLength(50).HasDefaultValue("draft");
+            e.Property(m => m.ErrorMessage).HasMaxLength(500);
+            e.HasOne(m => m.Campaign).WithMany().HasForeignKey(m => m.CampaignId);
+            e.HasOne(m => m.Brand).WithMany().HasForeignKey(m => m.BrandId);
+        });
+
+        builder.Entity<SendLog>(e =>
+        {
+            e.ToTable("send_logs");
+            e.HasKey(l => l.Id);
+            e.HasIndex(l => l.TenantId);
+            e.HasIndex(l => new { l.TenantId, l.BrandId });
+            e.HasIndex(l => new { l.BrandId, l.SentAt });
+            e.Property(l => l.Channel).HasMaxLength(50).IsRequired();
+            e.Property(l => l.Provider).HasMaxLength(50).IsRequired();
+            e.Property(l => l.Status).HasMaxLength(50).HasDefaultValue("sent");
+            e.Property(l => l.ErrorMessage).HasMaxLength(1000);
+            e.HasOne(l => l.Brand).WithMany().HasForeignKey(l => l.BrandId);
+        });
+
+        // ── End Sprint 26 ─────────────────────────────────────────────────
 
         // Global tenant query filter on all TenantEntity subclasses
         var tenantId = tenantService.TenantId;

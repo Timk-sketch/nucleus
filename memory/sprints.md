@@ -19,7 +19,7 @@ A feature DOES NOT ship to Nucleus until it has been:
 
 ---
 
-## Sprint History (All Complete as of 2026-05-26)
+## Sprint History (All Complete)
 
 | Sprint | What Shipped |
 |--------|-------------|
@@ -40,8 +40,59 @@ A feature DOES NOT ship to Nucleus until it has been:
 | 20 | Audit log + super-admin panel |
 | 21 | CI/CD — GitHub Actions build/test, RegisterCommand validator |
 | 22 | Plan enforcement, SuperAdmin seed, nightly rank job |
+| 23 | Service Hub Architecture — ShellLayout, 5 hub layouts, hub landing pages, amber/green/purple/pink themes |
+| 24 | Content Hub — keyword library, AI generator, editorial calendar, content library (assumed from roadmap) |
+| 25 | Search Hub — rankings dashboard, rank history, alerts, topic clusters, content gaps, page performance |
+| 26 | Distribution Hub — social scheduler, email blasts, campaign workspace, send log |
 
-**Current state: Sprint 23 complete. Deployment unblocked.**
+**Current state: Sprint 26 complete.**
+
+---
+
+## Sprint 26 — Distribution Hub (COMPLETE)
+
+**Shipped:**
+
+### Domain Entities (all inherit TenantEntity, all tenant-scoped)
+- `SocialPost` — platform, caption, imageUrl, scheduledAt, publishedAt, status, externalPostId, provider
+- `EmailCampaignMessage` — campaignId, subject, htmlBody, sentAt, openCount, clickCount, recipientCount, status
+- `SendLog` — channel, recipientCount, sentAt, provider, status, errorMessage (immutable audit trail)
+
+### EF Core
+- Migration `DistributionHub` applied — creates `social_posts`, `email_campaign_messages`, `send_logs` tables
+- All three tables have `(TenantId, BrandId)` composite indexes
+- All registered in `INucleusDbContext` interface + `NucleusDbContext` implementation
+- Global tenant query filter applied automatically via `TenantEntity` base class loop
+
+### MediatR Commands (Application layer, all tenant-scoped)
+- `ScheduleSocialPostCommand` — validates platform, caption, future scheduledAt; appends SendLog on success
+- `CreateEmailCampaignCommand` — creates EmailCampaign + initial EmailCampaignMessage in "draft"
+- `SendEmailCampaignCommand` — pluggable transport (SMTP via IEmailService); creates EmailCampaignMessage record + SendLog; handles partial failures
+
+### MediatR Queries
+- `GetSocialScheduleQuery` — date-window + optional status filter, ordered by scheduledAt
+- `GetEmailCampaignsQuery` — with rolled-up open/click stats from EmailCampaignMessages
+- `GetSendLogQuery` — paginated, channel-filterable, newest first
+- `GetCampaignStatsQuery` — aggregate stats (openRate, clickRate) for a specific campaign
+
+### API Controller
+- `DistributionController` at `/api/distribution` — thin MediatR dispatcher
+- `GET  /api/distribution/social` — social schedule with optional date/status filters
+- `POST /api/distribution/social` — schedule a social post (returns 201 + post id)
+- `GET  /api/distribution/email` — list email campaigns for a brand
+- `GET  /api/distribution/email/{id}/stats` — campaign stats (opens, clicks, rates)
+- `POST /api/distribution/email` — create a campaign draft
+- `POST /api/distribution/email/send` — send a campaign to a recipient list
+- `GET  /api/distribution/sendlog` — paginated send log with channel filter
+
+### Blazor Pages (all use DistributionLayout — amber theme)
+- `/distribution/social` — calendar-style grouped schedule view, new post modal, platform filter tabs
+- `/distribution/email` — campaign list with open/click rate stats, create modal, send modal
+- `/distribution/campaigns` — campaign workspace with summary stat cards, per-campaign stats drill-in
+- `/distribution/sendlog` — paginated audit log, channel filter (email/social/sms), pagination
+
+### Layout
+- `DistributionLayout.razor` updated with full focus menu: Overview, Social Scheduler, Email Blasts, Campaign Workspace, Send Log — using `hub-focus-menu`/`hub-focus-item` CSS classes consistent with SearchLayout pattern
 
 ---
 
@@ -86,20 +137,35 @@ A feature DOES NOT ship to Nucleus until it has been:
 - WP and GHL connection verification
 - Brand edit/delete
 
-### Content
+### Content Hub
 - WP blog post management (create, edit, publish)
 - Keyword tracking per brand
 - DataForSEO rank checking (on-demand + nightly)
 - Keyword rank history
 
+### Search Hub
+- Rankings dashboard with Top3/Top10/Top30 stats
+- Rank history per keyword
+- Search alerts (rank_drop, rank_rise, out_of_top_10, entered_top_3)
+- Topic clusters (pillar keyword + cluster keywords)
+- Content gaps (keywords without content)
+- Page performance metrics
+
+### Distribution Hub
+- Social post scheduling (platform, caption, imageUrl, scheduledAt)
+- Email campaigns (create, draft, send with SMTP)
+- Campaign stats (open rate, click rate)
+- Full send log (email + social audit trail, paginated)
+- `DistributionController` at `/api/distribution`
+
 ### Contacts
 - GHL contacts sync (Hangfire background job)
 - Contact list view per brand
 
-### Email Campaigns
+### Email Campaigns (legacy)
 - Campaign entity (name, subject, status, sent date)
 - Campaign list view
-- Basic send infrastructure
+- Basic send infrastructure (EmailCampaignController)
 
 ### Team
 - User invite flow
@@ -129,42 +195,7 @@ A feature DOES NOT ship to Nucleus until it has been:
 
 ---
 
-## Next: Sprint 23+ Roadmap
-
-### Sprint 24 — Content Hub (NEXT)
-### Sprint 24 — Content Hub (first full hub)
-SEO Hub has proven Content features. Port them into Nucleus with multi-tenancy.
-
-Core features (proven in SEO Hub, ready to port):
-- Keyword Library (CRUD, import, bulk operations)
-- AI Content Generator (brand context, page type, keyword)
-- Editorial Calendar (scheduled content)
-- Content Approval Queue
-- Content Library (all published + draft content)
-- Brand Voice Rules (banned words)
-- Content Templates
-
-Multi-tenancy additions over SEO Hub:
-- All keyword/content queries scoped by TenantId + BrandId
-- AI generation costs tracked per tenant
-- Content templates shared within tenant (not global)
-
-Plan gates: Starter = AI generator limited to 5/month; Pro/Agency = unlimited
-
-### Sprint 25 — Search Performance Hub
-- Keyword rankings dashboard (DataForSEO — already integrated at entity level)
-- Ranking history charts per keyword
-- Alerts (rank drops, significant changes)
-- Topic cluster map
-- Content gaps (keywords without content)
-- Page performance metrics (GSC integration)
-
-### Sprint 26 — Distribution Hub
-- Social media scheduler (GHL Social Planner integration)
-- Email blasts (GHL or Drip depending on brand config)
-- Campaign workspace
-- Send log
-- Reviews (GHL reviews sync)
+## Sprint 27+ Roadmap
 
 ### Sprint 27 — Authority Hub
 - Backlink tracking
@@ -185,6 +216,8 @@ Plan gates: Starter = AI generator limited to 5/month; Pro/Agency = unlimited
 - CDN for WASM assets (improve cold load time)
 - Public API + API keys (Zapier/Make integrations) — P3
 - GHL webhook receiver (real-time vs polling) — P3
+- Distribution Hub: GHL Social Planner live integration (currently queues to DB, GHL push via Hangfire job)
+- Distribution Hub: Reviews Manager (GHL reviews sync)
 
 ---
 

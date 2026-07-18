@@ -1,0 +1,248 @@
+@page "/distribution/campaigns"
+@attribute [Authorize]
+@layout DistributionLayout
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<PageTitle>Campaign Workspace — Distribution Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Campaign Workspace</h1>
+        <p class="page-subtitle">View stats and manage multi-channel campaigns.</p>
+    </div>
+    <a href="/distribution/email" class="btn-hub" style="text-decoration:none;">
+        + New Campaign
+    </a>
+</div>
+
+@if (_brands.Count == 0 && !_loading)
+{
+    <div class="empty-state">No brands yet. <a href="/brands">Add a brand</a> to start.</div>
+}
+else
+{
+    <div class="brand-pill-row">
+        @foreach (var b in _brands)
+        {
+            <button class="brand-pill-btn @(_selectedBrand?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                    @onclick="() => SelectBrand(b)">
+                <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+                @b.Name
+            </button>
+        }
+    </div>
+}
+
+@if (_error != null) { <div class="alert-error">@_error</div> }
+
+@if (_selectedBrand != null)
+{
+    @if (_loading)
+    {
+        <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+    }
+    else
+    {
+        <!-- Summary stats row -->
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px;">
+            <div class="stat-card stat-card--sm">
+                <div class="stat-label">Total Campaigns</div>
+                <div class="stat-value">@_campaigns.Count</div>
+            </div>
+            <div class="stat-card stat-card--sm">
+                <div class="stat-label">Sent</div>
+                <div class="stat-value" style="color:var(--hub-color)">@_campaigns.Count(c => c.Status == "sent")</div>
+            </div>
+            <div class="stat-card stat-card--sm">
+                <div class="stat-label">Total Recipients</div>
+                <div class="stat-value">@_campaigns.Sum(c => c.RecipientCount)</div>
+            </div>
+            <div class="stat-card stat-card--sm">
+                <div class="stat-label">Drafts</div>
+                <div class="stat-value">@_campaigns.Count(c => c.Status == "draft")</div>
+            </div>
+        </div>
+
+        @if (_campaigns.Count == 0)
+        {
+            <div class="empty-state">
+                No campaigns yet for this brand.
+                <a href="/distribution/email" style="color:var(--hub-color);">Create one →</a>
+            </div>
+        }
+        else
+        {
+            <!-- Campaign stats cards -->
+            @if (_selectedCampaignStats != null)
+            {
+                <div class="table-container" style="padding:20px;margin-bottom:24px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                        <h3 style="font-size:15px;font-weight:700;margin:0;">Campaign Stats: @_selectedCampaignStats.Subject</h3>
+                        <button class="btn-secondary" @onclick="() => _selectedCampaignStats = null">Close</button>
+                    </div>
+                    <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                        <div class="stat-card stat-card--sm">
+                            <div class="stat-label">Messages</div>
+                            <div class="stat-value">@_selectedCampaignStats.TotalMessages</div>
+                        </div>
+                        <div class="stat-card stat-card--sm">
+                            <div class="stat-label">Recipients</div>
+                            <div class="stat-value">@_selectedCampaignStats.TotalRecipients</div>
+                        </div>
+                        <div class="stat-card stat-card--sm">
+                            <div class="stat-label">Opens</div>
+                            <div class="stat-value" style="color:var(--hub-color);">
+                                @_selectedCampaignStats.TotalOpens
+                                <span style="font-size:13px;font-weight:400;color:var(--color-muted);">(@_selectedCampaignStats.OpenRate%)</span>
+                            </div>
+                        </div>
+                        <div class="stat-card stat-card--sm">
+                            <div class="stat-label">Clicks</div>
+                            <div class="stat-value" style="color:var(--hub-color);">
+                                @_selectedCampaignStats.TotalClicks
+                                <span style="font-size:13px;font-weight:400;color:var(--color-muted);">(@_selectedCampaignStats.ClickRate%)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Subject</th>
+                            <th>Status</th>
+                            <th>Recipients</th>
+                            <th>Sent</th>
+                            <th>Created</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var c in _campaigns)
+                        {
+                            <tr>
+                                <td style="font-weight:600;">@c.Subject</td>
+                                <td><span class="status-badge status-badge--@StatusClass(c.Status)">@c.Status</span></td>
+                                <td>@c.RecipientCount</td>
+                                <td style="font-size:12px;color:var(--color-muted);">
+                                    @(c.SentAt.HasValue ? c.SentAt.Value.ToString("MMM d, yyyy") : "—")
+                                </td>
+                                <td style="font-size:12px;color:var(--color-muted);">@c.CreatedAt.ToString("MMM d, yyyy")</td>
+                                <td>
+                                    <button class="btn-secondary" style="font-size:12px;padding:4px 10px;"
+                                            @onclick="() => LoadCampaignStats(c.Id)">
+                                        View Stats
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+}
+
+@code {
+    [SupplyParameterFromQuery] private Guid CampaignId { get; set; }
+    [SupplyParameterFromQuery] private Guid BrandIdParam { get; set; }
+
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private List<CampaignItem> _campaigns = [];
+    private CampaignStatsItem? _selectedCampaignStats;
+    private bool _loading;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+
+        // If brandId is in query string, pre-select it
+        if (BrandIdParam != Guid.Empty)
+        {
+            var brand = _brands.FirstOrDefault(b => b.Id == BrandIdParam);
+            if (brand != null) await SelectBrand(brand);
+        }
+        else if (_brands.Count > 0)
+        {
+            await SelectBrand(_brands[0]);
+        }
+
+        // If campaignId is in query string, load its stats
+        if (CampaignId != Guid.Empty && _selectedBrand != null)
+            await LoadCampaignStats(CampaignId);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _error = null;
+        _selectedCampaignStats = null;
+        await LoadCampaigns();
+    }
+
+    private async Task LoadCampaigns()
+    {
+        if (_selectedBrand is null) return;
+        _loading = true;
+        _campaigns = [];
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<List<CampaignItem>>>(
+                $"api/distribution/email?brandId={_selectedBrand.Id}");
+            _campaigns = resp?.Data ?? [];
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task LoadCampaignStats(Guid campaignId)
+    {
+        if (_selectedBrand is null) return;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<CampaignStatsItem>>(
+                $"api/distribution/email/{campaignId}/stats?brandId={_selectedBrand.Id}");
+            _selectedCampaignStats = resp?.Data;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private static string StatusClass(string s) => s switch
+    {
+        "sent"    => "success",
+        "sending" => "info",
+        "failed"  => "danger",
+        _         => "muted",
+    };
+
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; public string PrimaryColor { get; set; } = "#f59e0b"; }
+    private class CampaignItem
+    {
+        public Guid Id { get; set; }
+        public string Subject { get; set; } = "";
+        public string Status { get; set; } = "";
+        public int RecipientCount { get; set; }
+        public DateTimeOffset? SentAt { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+    }
+    private class CampaignStatsItem
+    {
+        public Guid CampaignId { get; set; }
+        public string Subject { get; set; } = "";
+        public string Status { get; set; } = "";
+        public int TotalMessages { get; set; }
+        public int TotalRecipients { get; set; }
+        public int TotalOpens { get; set; }
+        public int TotalClicks { get; set; }
+        public double OpenRate { get; set; }
+        public double ClickRate { get; set; }
+        public DateTimeOffset? SentAt { get; set; }
+    }
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

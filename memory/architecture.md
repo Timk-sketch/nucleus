@@ -56,6 +56,8 @@ Each hub's pages declare their layout:
 @layout ContentLayout
 ```
 
+**Focus menu CSS pattern:** use `.hub-focus-menu` nav + `.hub-focus-item` NavLink (not `.hub-focus-nav`/`.nav-item`). See SearchLayout.razor.
+
 **Switching between hubs = zero page reload.** The shell stays mounted; only @Body replaces.
 
 ---
@@ -71,7 +73,7 @@ Each hub's pages declare their layout:
 
 ---
 
-## Current Domain Entities (Sprint 22)
+## Current Domain Entities (Sprint 26)
 
 | Entity | Inherits | Key Fields |
 |--------|----------|------------|
@@ -80,8 +82,14 @@ Each hub's pages declare their layout:
 | ApplicationUser | IdentityUser | TenantId, RefreshToken, LockoutEnabled |
 | BrandKeyword | TenantEntity | BrandId, Keyword, CurrentRank, PeakRank |
 | KeywordRank | TenantEntity | BrandKeywordId, Rank, CheckedAt |
+| KeywordRankSnapshot | TenantEntity | BrandId, KeywordId, Position, Url, SearchVolume, Competition, CheckedAt |
+| SearchAlert | TenantEntity | BrandId, KeywordId, AlertType, Threshold, IsActive, TriggeredAt, Message |
+| TopicCluster | TenantEntity | BrandId, Name, PillarKeyword, ClusterKeywordsJson, Status, Notes |
 | GhlContact | TenantEntity | BrandId, GhlId, Email, Phone, Tags |
-| EmailCampaign | TenantEntity | BrandId, Name, Subject, Status, SentAt |
+| EmailCampaign | TenantEntity | BrandId, Subject, HtmlBody, Status, RecipientCount, SentAt |
+| EmailCampaignMessage | TenantEntity | CampaignId, BrandId, Subject, HtmlBody, SentAt, OpenCount, ClickCount, RecipientCount, Status |
+| SocialPost | TenantEntity | BrandId, Platform, Caption, ImageUrl, ScheduledAt, PublishedAt, Status, ExternalPostId, Provider |
+| SendLog | TenantEntity | BrandId, CampaignId?, SocialPostId?, Channel, RecipientCount, SentAt, Provider, Status |
 | AuditLog | — | Actor, Action, EntityType, EntityId, DiffJson, Timestamp |
 | RefreshToken | — | UserId, Token, ExpiresAt, IsRevoked |
 
@@ -93,11 +101,9 @@ Each hub's pages declare their layout:
 Nucleus.Application/
   {Feature}/
     Commands/
-      Create{Entity}Command.cs      ← IRequest<Guid>
-      Create{Entity}Handler.cs      ← IRequestHandler<Create{Entity}Command, Guid>
+      Create{Entity}Command.cs      ← IRequest<Guid> — command + validator + handler in one file
     Queries/
-      Get{Entity}Query.cs
-      Get{Entity}Handler.cs
+      Get{Entity}Query.cs           ← IRequest<T> — query + handler in one file
     DTOs/
       {Entity}Dto.cs
 ```
@@ -131,6 +137,7 @@ All jobs must have `[DisableConcurrentExecution(timeoutInSeconds: 300)]`.
 | Keywords | 20 | 100 | Unlimited |
 | GHL Contacts sync | — | Yes | Yes |
 | Email Campaigns | — | Yes | Yes |
+| Social Scheduling | 3/month | Unlimited | Unlimited |
 | Team members | 1 | 5 | Unlimited |
 | All 5 Service Hubs | Partial | Full | Full |
 
@@ -145,19 +152,22 @@ Nucleus.sln
 src/
   Nucleus.Api/
     Controllers/        ← thin HTTP handlers, MediatR only
-    Data/               ← NucleusDbContext, migrations
+    Data/               ← DesignTimeDbContextFactory
     Jobs/               ← Hangfire job classes
     Middleware/         ← tenant resolution, auth middleware
     Program.cs
   Nucleus.Application/
     Auth/               ← login, register, JWT commands
     Brands/             ← brand CRUD + provisioning
-    Common/             ← shared DTOs, interfaces
+    Common/             ← shared DTOs, interfaces (INucleusDbContext, ICurrentTenantService)
+    Distribution/       ← Distribution Hub commands/queries/DTOs (Sprint 26)
+    Search/             ← Search Hub commands/queries/DTOs (Sprint 25)
   Nucleus.Domain/
     Entities/           ← all domain entities
     Events/             ← domain events
   Nucleus.Infrastructure/
     Auth/               ← JWT generation, refresh tokens
+    Data/               ← NucleusDbContext + migrations
     Multitenancy/       ← ICurrentTenantService, middleware
   Nucleus.Web/
     Layout/             ← MainLayout + per-hub layouts
@@ -165,5 +175,5 @@ src/
     Services/           ← AuthService, JwtAuthStateProvider
     wwwroot/
 tests/
-  Nucleus.Tests/        ← xUnit, auth + brand + analytics tests
+  Nucleus.Application.Tests/  ← xUnit, auth + brand + analytics tests
 ```
