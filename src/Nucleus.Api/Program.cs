@@ -180,6 +180,14 @@ builder.Services.AddValidatorsFromAssembly(typeof(Nucleus.Application.Behaviors.
 // Supavisor URL format:
 //   postgresql://postgres.[project-ref]:[password]@aws-0-us-east-1.pooler.supabase.com:6543/postgres
 var hangfireConnStr = builder.Configuration["HANGFIRE_CONNECTION_STRING"];
+// Railway/Supabase provide postgres:// URI format — convert to Npgsql key-value format.
+if (!string.IsNullOrEmpty(hangfireConnStr) &&
+    (hangfireConnStr.StartsWith("postgres://") || hangfireConnStr.StartsWith("postgresql://")))
+{
+    var hfUri = new Uri(hangfireConnStr);
+    var hfUser = hfUri.UserInfo.Split(':', 2);
+    hangfireConnStr = $"Host={hfUri.Host};Port={hfUri.Port};Database={hfUri.AbsolutePath.TrimStart('/')};Username={hfUser[0]};Password={Uri.UnescapeDataString(hfUser.Length > 1 ? hfUser[1] : string.Empty)};SSL Mode=Require;Trust Server Certificate=true";
+}
 if (!string.IsNullOrEmpty(hangfireConnStr))
 {
     builder.Services.AddHangfire(cfg => cfg
