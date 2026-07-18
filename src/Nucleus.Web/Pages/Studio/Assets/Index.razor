@@ -345,12 +345,12 @@ else
         a.AssetType is "image" or "generated" or "svg" ||
         (a.MimeType?.StartsWith("image/") == true);
 
-    private static string FormatFileSize(long bytes) => bytes switch
+    private static string FormatFileSize(long bytes)
     {
-        < 1024 => $"{bytes} B",
-        < 1024 * 1024 => $"{bytes / 1024} KB",
-        _ => $"{bytes / (1024 * 1024)} MB",
-    };
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024} KB";
+        return $"{bytes / (1024 * 1024)} MB";
+    }
 
     // DTOs
     private class BrandItem
