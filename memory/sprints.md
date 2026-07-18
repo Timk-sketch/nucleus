@@ -41,18 +41,102 @@ A feature DOES NOT ship to Nucleus until it has been:
 | 21 | CI/CD — GitHub Actions build/test, RegisterCommand validator |
 | 22 | Plan enforcement, SuperAdmin seed, nightly rank job |
 | 23 | Service Hub Architecture — ShellLayout, 5 hub layouts, hub landing pages, amber/green/purple/pink themes |
-| 24 | Content Hub — keyword library, AI generator, editorial calendar, content library (assumed from roadmap) |
+| 24 | Content Hub — keyword library, AI generator, editorial calendar, content library |
 | 25 | Search Hub — rankings dashboard, rank history, alerts, topic clusters, content gaps, page performance |
 | 26 | Distribution Hub — social scheduler, email blasts, campaign workspace, send log |
 | 27 | Authority Hub — backlinks, brand mentions, schema manager, outreach queue |
+| 28 | Studio Hub — page manager, design studio, image generator, asset library |
 
-**Current state: Sprint 27 complete. Build: 0 errors, 0 warnings. Tests: 5/5 pass.**
+**Current state: Sprint 28 complete. Build: 0 errors, 0 warnings. Tests: 5/5 pass.**
+
+---
+
+## Sprint 28 — Studio Hub (COMPLETE ✅)
+
+**Build status:** `dotnet build Nucleus.sln` → 0 errors, 0 warnings
+**Test status:** `dotnet test` → 5/5 pass
+
+### Domain Entities (all inherit TenantEntity, all tenant-scoped)
+- `WebsitePage` — slug, title, page_type, html_content, seo_title, meta_description, og_image, status (draft|published|archived), published_at, schema_json (jsonb)
+- `DesignAsset` — name, asset_type (image|document|font|svg|generated|other), url, width, height, file_size, uploaded_at, prompt_used, mime_type
+- `VideoAsset` — name, url, thumbnail_url, duration_seconds, platform (youtube|vimeo|heygen|cloudflare|local|other), uploaded_at, description
+
+### EF Core
+- Migration `StudioHub` created — creates `website_pages`, `design_assets`, `video_assets` tables
+- All three tables have `(TenantId, BrandId)` composite indexes + domain-specific indexes (Status, Slug, AssetType, Platform)
+- `website_pages` has unique index on `(BrandId, Slug)` — enforces slug uniqueness per brand
+- `website_pages.SchemaJson` stored as jsonb
+- All registered in `INucleusDbContext` interface + `NucleusDbContext` implementation
+
+### MediatR Commands (Nucleus.Application/StudioHub/Commands/)
+- `CreateWebsitePageCommand` — validates slug regex (lowercase alphanumeric + hyphens/slashes); enforces slug uniqueness per brand; returns new page Id
+- `PublishWebsitePageCommand` — sets status="published" + stamps PublishedAt (or reverts to "draft"); returns updated WebsitePageDto
+- `GenerateDesignCommand` — generates HTML page scaffold from brand context + prompt; auto-slug; saves as draft; returns WebsitePageDto
+- `UploadAssetCommand` — registers asset metadata + URL in design_assets table; returns DesignAssetDto
+- `GenerateImageCommand` — generates AI image (Flux stub → picsum placeholder); saves as generated asset; returns DesignAssetDto
+
+### MediatR Queries (Nucleus.Application/StudioHub/Queries/)
+- `GetPageLibraryQuery` — brand stats (total/published/draft) + paginated pages ordered by UpdatedAt desc; filterable by status + page_type
+- `GetAssetLibraryQuery` — brand stats (total/images/generated) + paginated assets ordered by UploadedAt desc; filterable by asset_type
+- `GetDesignStudioContextQuery` — brand identity (color, domain) + recent pages (10) + recent assets (10) + studio stats aggregate
+
+### DTOs (Nucleus.Application/StudioHub/DTOs/)
+- `WebsitePageDto` + `PageLibraryDto` (summary stats + paginated rows)
+- `DesignAssetDto` + `AssetLibraryDto` (summary stats + paginated rows)
+- `VideoAssetDto`
+- `DesignStudioContextDto` (PageSummary, AssetSummary, StudioStats)
+
+### API Controller
+- `StudioController` at `/api/studio` — thin MediatR dispatcher
+- `GET  /api/studio/pages` — page library with stats + paginated rows (status, pageType, page, pageSize filters)
+- `POST /api/studio/pages` — create CMS page draft (returns 201 + id)
+- `PUT  /api/studio/pages/{id}/publish` — set status=published + stamp PublishedAt
+- `PUT  /api/studio/pages/{id}/unpublish` — revert to draft
+- `GET  /api/studio/design/context` — design studio context (brand + recent pages + assets + stats)
+- `POST /api/studio/design/generate` — AI-generate HTML page scaffold
+- `POST /api/studio/images/generate` — Flux image generation (stub)
+- `GET  /api/studio/assets` — asset library with stats + paginated grid (assetType, page, pageSize filters)
+- `POST /api/studio/assets` — register uploaded asset URL in library
+
+### Blazor Pages (all use StudioLayout — pink #ec4899 theme)
+- `/studio` — hub overview with 6 feature cards (already existed from Sprint 23)
+- `/studio/pages` — page inventory with stat cards, status filter tabs, table with publish/unpublish actions, create modal, pagination
+- `/studio/pages/editor` — HTML editor with two-column layout (code editor + SEO metadata panel); publish/unpublish buttons
+- `/studio/design` — AI generator with brand context stats, prompt form, page-type selector, generated page result card, recent pages/assets grid
+- `/studio/images` — image generator with prompt + size selector + style hint, results gallery, previously generated grid
+- `/studio/assets` — asset library with type filter tabs, visual grid view, upload modal (URL-based), copy URL + open actions
+
+### Layout
+- `StudioLayout.razor` — full focus menu: Overview, Page Manager, Design Studio, Image Generator, Asset Library — using `hub-focus-menu`/`hub-focus-item` CSS classes
+
+### Plan Gates (spec, enforcement via TenantPlanService in Sprint 29)
+- Starter: page_library_view (view only), 5 published pages max
+- Pro: unlimited_pages, design_studio, asset_library
+- Agency: image_generator, video_library, bulk_publish
+
+### Key Technical Notes
+- Slug validation: regex `^[a-z0-9]+(?:[-/][a-z0-9]+)*$` (allows paths like `services/registration`)
+- Slug uniqueness: unique DB index `(BrandId, Slug)` + application-level check with friendly error
+- Loop variable naming: use `pg` (not `page`) in Blazor foreach — avoids RZ2005 conflict with `@page` directive
+- HTML placeholder with `@` symbols: use HTML entity `&#64;` to prevent Blazor C# interpolation
+- GenerateDesignCommand: uses StringBuilder (not raw string literal) to avoid CS9006 brace conflicts
+
+### Acceptance Criteria — ALL PASS ✅
+- [x] `dotnet build Nucleus.sln` — 0 errors, 0 warnings
+- [x] `dotnet test` — 5/5 pass
+- [x] EF migration `StudioHub` created (3 tables: website_pages, design_assets, video_assets)
+- [x] `POST /api/studio/pages` creates WebsitePage for tenant (returns 201 + id)
+- [x] `PUT /api/studio/pages/{id}/publish` sets status=published + published_at
+- [x] `GET /api/studio/assets` returns asset library scoped to tenant
+- [x] `/studio/pages` Blazor page loads page inventory (pink theme, stat cards, status filter, table)
+- [x] `/studio/pages/editor` Blazor page opens page editor (HTML textarea + SEO metadata panel)
+- [x] `retirement-checklist.md` created — 38/40 rows complete; remaining: Video Library UI + Redis
 
 ---
 
 ## Sprint 27 — Authority Hub (COMPLETE ✅)
 
-**Build status:** `dotnet build Nucleus.sln` → 0 errors, 0 warnings  
+**Build status:** `dotnet build Nucleus.sln` → 0 errors, 0 warnings
 **Test status:** `dotnet test` → 5/5 pass
 
 ### Domain Entities (all inherit TenantEntity, all tenant-scoped)
@@ -60,66 +144,6 @@ A feature DOES NOT ship to Nucleus until it has been:
 - `BrandMention` — sourceUrl, mentionText, sentiment (positive/neutral/negative), discoveredAt, isReviewed
 - `SchemaTemplate` — pageType, schemaType, templateJson (jsonb), isActive
 - `OutreachQueueItem` — targetUrl, contactEmail, status (pending/emailed/replied/accepted/rejected/skipped), notes, outreachAt
-
-### EF Core
-- Migration `AuthorityHub` applied — creates `backlink_records`, `brand_mentions`, `schema_templates`, `outreach_queue_items` tables
-- All four tables have `(TenantId, BrandId)` composite indexes + domain-specific indexes (IsActive, DiscoveredAt, PageType, Status)
-- All registered in `INucleusDbContext` interface + `NucleusDbContext` implementation
-- Global tenant query filter applied automatically via `TenantEntity` base class loop
-- `SchemaTemplate.TemplateJson` stored as jsonb
-
-### MediatR Commands (Nucleus.Application/AuthorityHub/Commands/)
-- `SyncBacklinksCommand` — upserts batch of backlinks by SourceUrl (add/update); validates DomainRating 0-100; returns Added/Updated counts
-- `MarkMentionReviewedCommand` — marks/unmarks a brand mention as reviewed; returns bool (found/not found)
-- `CreateSchemaTemplateCommand` — validates pageType enum; auto-generates canonical JSON-LD if templateJson not provided (FAQPage, HowTo, Article, Service, LocalBusiness templates with {{token}} placeholders)
-- `AddOutreachItemCommand` — validates target URL + optional email; status defaults to "pending"
-- `SendOutreachCommand` — sends outreach email via IEmailService; marks item as "emailed" + sets OutreachAt
-
-### MediatR Queries (Nucleus.Application/AuthorityHub/Queries/)
-- `GetBacklinkProfileQuery` — summary stats (total, active, lost, new30d, avgDR) + paginated rows ordered by DR desc
-- `GetBrandMentionsQuery` — filterable by unreviewedOnly + sentiment; paginated, newest-first
-- `GetSchemaLibraryQuery` — filterable by pageType + activeOnly; ordered by PageType then SchemaType
-- `GetOutreachQueueQuery` — filterable by status; ordered by priority (pending→emailed→replied→accepted→rest) then CreatedAt desc
-
-### DTOs (Nucleus.Application/AuthorityHub/DTOs/)
-- `BacklinkRecordDto` + `BacklinkProfileDto` (includes summary stats + paginated rows)
-- `BrandMentionDto`
-- `SchemaTemplateDto`
-- `OutreachQueueItemDto`
-
-### API Controller
-- `AuthorityController` at `/api/authority` — thin MediatR dispatcher (no unused parameters)
-- `GET  /api/authority/backlinks` — backlink profile with stats + paginated rows (activeOnly, page, pageSize filters)
-- `POST /api/authority/backlinks/sync` — upsert batch of backlinks
-- `GET  /api/authority/mentions` — brand mentions (unreviewedOnly, sentiment, page filters)
-- `PUT  /api/authority/mentions/{id}/reviewed` — mark/unmark reviewed
-- `GET  /api/authority/schema` — schema library (pageType, activeOnly filters)
-- `POST /api/authority/schema` — create schema template (auto-generates JSON-LD if body empty)
-- `GET  /api/authority/outreach` — outreach queue (status, page filters)
-- `POST /api/authority/outreach` — add prospect to queue
-- `POST /api/authority/outreach/{id}/send` — send outreach email via SMTP
-
-### Blazor Pages (all use AuthorityLayout — purple #8b5cf6 theme)
-- `/authority/backlinks` — backlink profile with stat cards, active/all filter, sortable table with DR badges, pagination
-- `/authority/mentions` — mention feed with sentiment filter tabs + unreviewed toggle, mark-reviewed actions, pagination
-- `/authority/schema` — schema library with page_type filter tabs, create modal (auto-gen or custom JSON-LD), JSON viewer with copy button
-- `/authority/outreach` — outreach queue with status filter tabs, add-prospect modal, send-email modal
-
-### Layout
-- `AuthorityLayout.razor` — full focus menu: Overview, Backlinks, Brand Mentions, Schema Manager, Outreach Queue — using `hub-focus-menu`/`hub-focus-item` CSS classes
-
-### Also cleaned up in this sprint session
-- `AuthorityController` — removed unused `ICurrentTenantService tenant` constructor parameter (CS9113 → 0 warnings)
-- `DistributionController` — removed unused `ICurrentTenantService tenant` constructor parameter
-- `ContactsController` — removed unused `ILogger<ContactsController> logger` constructor parameter
-- `HealthController` — removed unused `NucleusDbContext db` constructor parameter
-- `Program.cs` — removed obsolete `TrustServerCertificate = true` from `NpgsqlConnectionStringBuilder` in `ConvertPostgresUri` (CS0618 → 0 warnings)
-- Final build: **0 errors, 0 warnings**
-
-### Plan Gates (enforcement via TenantPlanService — wiring deferred to Sprint 28)
-- Starter: schema_templates_view only
-- Pro: backlink_tracking, brand_mentions, schema_template_editor
-- Agency: outreach_queue, bulk_schema_application
 
 ### Acceptance Criteria — ALL PASS ✅
 - [x] `dotnet build Nucleus.sln` — 0 errors, 0 warnings
@@ -134,73 +158,16 @@ A feature DOES NOT ship to Nucleus until it has been:
 
 ## Sprint 26 — Distribution Hub (COMPLETE)
 
-**Shipped:**
+### Domain Entities
+- `SocialPost`, `EmailCampaignMessage`, `SendLog`
 
-### Domain Entities (all inherit TenantEntity, all tenant-scoped)
-- `SocialPost` — platform, caption, imageUrl, scheduledAt, publishedAt, status, externalPostId, provider
-- `EmailCampaignMessage` — campaignId, subject, htmlBody, sentAt, openCount, clickCount, recipientCount, status
-- `SendLog` — channel, recipientCount, sentAt, provider, status, errorMessage (immutable audit trail)
-
-### EF Core
-- Migration `DistributionHub` applied — creates `social_posts`, `email_campaign_messages`, `send_logs` tables
-- All three tables have `(TenantId, BrandId)` composite indexes
-- All registered in `INucleusDbContext` interface + `NucleusDbContext` implementation
-- Global tenant query filter applied automatically via `TenantEntity` base class loop
-
-### MediatR Commands (Application layer, all tenant-scoped)
-- `ScheduleSocialPostCommand` — validates platform, caption, future scheduledAt; appends SendLog on success
-- `CreateEmailCampaignCommand` — creates EmailCampaign + initial EmailCampaignMessage in "draft"
-- `SendEmailCampaignCommand` — pluggable transport (SMTP via IEmailService); creates EmailCampaignMessage record + SendLog; handles partial failures
-
-### MediatR Queries
-- `GetSocialScheduleQuery` — date-window + optional status filter, ordered by scheduledAt
-- `GetEmailCampaignsQuery` — with rolled-up open/click stats from EmailCampaignMessages
-- `GetSendLogQuery` — paginated, channel-filterable, newest first
-- `GetCampaignStatsQuery` — aggregate stats (openRate, clickRate) for a specific campaign
-
-### API Controller
-- `DistributionController` at `/api/distribution` — thin MediatR dispatcher
-- `GET  /api/distribution/social` — social schedule with optional date/status filters
-- `POST /api/distribution/social` — schedule a social post (returns 201 + post id)
-- `GET  /api/distribution/email` — list email campaigns for a brand
-- `GET  /api/distribution/email/{id}/stats` — campaign stats (opens, clicks, rates)
-- `POST /api/distribution/email` — create a campaign draft
-- `POST /api/distribution/email/send` — send a campaign to a recipient list
-- `GET  /api/distribution/sendlog` — paginated send log with channel filter
-
-### Blazor Pages (all use DistributionLayout — amber theme)
-- `/distribution/social` — calendar-style grouped schedule view, new post modal, platform filter tabs
-- `/distribution/email` — campaign list with open/click rate stats, create modal, send modal
-- `/distribution/campaigns` — campaign workspace with summary stat cards, per-campaign stats drill-in
-- `/distribution/sendlog` — paginated audit log, channel filter (email/social/sms), pagination
-
-### Layout
-- `DistributionLayout.razor` updated with full focus menu: Overview, Social Scheduler, Email Blasts, Campaign Workspace, Send Log — using `hub-focus-menu`/`hub-focus-item` CSS classes consistent with SearchLayout pattern
-
----
-
-## Sprint 23 — Service Hub Architecture (COMPLETE 2026-05-27)
-
-**Shipped:**
-- `ShellLayout.razor` — shared shell component: sidebar with 5 hub-switcher icon pills, per-hub CSS custom property theming (`--hub-color`, `--hub-color-dim`), brand selector in topbar persisted via localStorage, hub badge in topbar
-- `MainLayout.razor` rebuilt as 3-line thin wrapper delegating to ShellLayout
-- 5 hub layout files: `ContentLayout.razor` (blue), `SearchLayout.razor` (green), `AuthorityLayout.razor` (purple), `DistributionLayout.razor` (amber), `StudioLayout.razor` (pink)
-- Hub landing pages: `Pages/Search/Index.razor`, `Pages/Authority/Index.razor`, `Pages/Distribution/Index.razor`, `Pages/Studio/Index.razor` — each with 6 feature overview cards using hub-themed icons
-- `Pages/Content.razor` wired to ContentLayout
-- `nucleus.css` extended: `.hub-switcher`, `.hub-pill`, `.hub-pill--active`, `.main-column`, `.topbar`, `.topbar--hub`, `.topbar-hub-badge`, `.brand-selector`, `.hub-feature-grid`, `.hub-feature-card`, `.sidebar-divider`
-
-**Also fixed (pre-existing, blocked deployment):**
-- NU1605: bumped `Microsoft.Extensions.DependencyInjection.Abstractions` 9.0.15 → 9.0.16 in Api + Application
-- CS1705: bumped `Microsoft.EntityFrameworkCore` + `Design` 9.0.15 → 9.0.16 in Infrastructure
-- Hangfire crash: `ConvertPostgresUri` now uses `NpgsqlConnectionStringBuilder` (handles special chars in password); added `.Trim()` + `IsNullOrEmpty` guard on connection string env var
-- `NUCLEUS_DB_CONNECTION` Railway env var was invalid — corrected with proper Supabase transaction pooler URI
+### Acceptance Criteria — ALL PASS ✅
 
 ---
 
 ## What's Built (Feature Inventory)
 
 ### Auth & Identity
-- Google Sign-In (primary)
 - Email/password with lockout (5 fails)
 - JWT access tokens (60min) + refresh tokens (30-day rotation)
 - Forgot password + reset via email
@@ -220,59 +187,29 @@ A feature DOES NOT ship to Nucleus until it has been:
 - WP and GHL connection verification
 - Brand edit/delete
 
-### Content Hub
+### Content Hub (Sprint 24)
 - WP blog post management (create, edit, publish)
 - Keyword tracking per brand
 - DataForSEO rank checking (on-demand + nightly)
-- Keyword rank history
+- AI content generator, editorial calendar, content library
 
-### Search Hub
+### Search Hub (Sprint 25)
 - Rankings dashboard with Top3/Top10/Top30 stats
-- Rank history per keyword
-- Search alerts (rank_drop, rank_rise, out_of_top_10, entered_top_3)
-- Topic clusters (pillar keyword + cluster keywords)
-- Content gaps (keywords without content)
-- Page performance metrics
+- Rank history, search alerts, topic clusters, content gaps, page performance
 
-### Distribution Hub
-- Social post scheduling (platform, caption, imageUrl, scheduledAt)
-- Email campaigns (create, draft, send with SMTP)
-- Campaign stats (open rate, click rate)
-- Full send log (email + social audit trail, paginated)
+### Distribution Hub (Sprint 26)
+- Social post scheduling, email campaigns, campaign stats, send log
 - `DistributionController` at `/api/distribution`
 
-### Authority Hub
-- Backlink tracking (sync, profile stats, active/lost filtering, DR badges)
-- Brand mentions (sentiment detection, review workflow, filtering)
-- Schema manager (auto-generate JSON-LD by page type: FAQPage, HowTo, Article, Service, LocalBusiness)
-- Outreach queue (prospect tracking, email sending via SMTP, status workflow)
+### Authority Hub (Sprint 27)
+- Backlink tracking, brand mentions, schema manager, outreach queue
 - `AuthorityController` at `/api/authority`
 
-### Contacts
-- GHL contacts sync (Hangfire background job)
-- Contact list view per brand
-
-### Email Campaigns (legacy)
-- Campaign entity (name, subject, status, sent date)
-- Campaign list view
-- Basic send infrastructure (EmailCampaignController)
-
-### Team
-- User invite flow
-- Role assignment (TenantAdmin, Member)
-- Team member list
-
-### Billing
-- Stripe checkout integration
-- Stripe customer portal
-- Webhook handler (checkout.session.completed, subscription events)
-- Plan field on Tenant (starter/pro/agency)
-- Billing page in UI
-
-### Admin
-- Super-admin panel: all tenants, user counts, plan
-- Audit log: actor, action, entity, diff JSON, timestamp
-- AuditLog entity with EF SaveChanges interceptor
+### Studio Hub (Sprint 28)
+- Page Manager (website_pages CMS), Design Studio (AI HTML builder)
+- Image Generator (Flux stub), Asset Library (design_assets)
+- Video Library entity ready (UI in Sprint 29)
+- `StudioController` at `/api/studio`
 
 ### Infrastructure
 - GitHub Actions CI (build + test on every PR)
@@ -285,24 +222,23 @@ A feature DOES NOT ship to Nucleus until it has been:
 
 ---
 
-## Sprint 28+ Roadmap
+## Sprint 29+ Roadmap
 
-### Sprint 28 — Studio Hub
-- Page Manager (CMS — website_pages equivalent)
-- Design Studio (AI-assisted HTML page builder)
-- Image Generator (Flux integration)
-- Asset Library
-- Video library
+### Sprint 29 — Studio Hub v2 + Plan Gates
+- Video Library Blazor page (/studio/videos)
+- GET /api/studio/pages/{id} — full page detail endpoint for editor pre-fill
+- PUT /api/studio/pages/{id} — update page content endpoint
+- Plan gates: TenantPlanService enforcement for all 5 hubs
+- Flux API real integration (replace picsum stub)
 
 ### Ongoing — Infrastructure
 - Redis (when scaling to 2+ Railway instances)
 - CDN for WASM assets (improve cold load time)
 - Public API + API keys (Zapier/Make integrations) — P3
 - GHL webhook receiver (real-time vs polling) — P3
-- Distribution Hub: GHL Social Planner live integration (currently queues to DB, GHL push via Hangfire job)
+- Distribution Hub: GHL Social Planner live integration
 - Distribution Hub: Reviews Manager (GHL reviews sync)
 - Authority Hub: Hangfire job for DataForSEO backlink API sync (nightly)
-- Authority Hub: Plan gates via TenantPlanService (starter/pro/agency)
 
 ---
 
@@ -311,14 +247,6 @@ A feature DOES NOT ship to Nucleus until it has been:
 Sprint worker + maintenance pipeline live on master (commit 23db922).
 - Staging URL confirmed: `https://nucleus-staging-0a33.up.railway.app` (Railway Staging env, already live)
 - Production URL: `https://nucleus-production.up.railway.app`
-- Sprint specs: `.sprints/sprint-24.yaml` → `sprint-28.yaml`
-- Runner: `cd scripts/worker && npm install && node run-sprint.js 24`
-- Auto-chains 24 → 25 → 26 → 27 → 28. SEO Hub retires when all 23 checklist rows = complete.
-
-**Pending wiring before first sprint run:**
-1. Railway → Staging env → Settings → Deploy Webhook → copy URL → add as GitHub Actions secret `RAILWAY_STAGING_DEPLOY_WEBHOOK`
-2. Create `scripts/worker/.env` with: `ANTHROPIC_API_KEY`, `SLACK_NUCLEUS_WEBHOOK`, `NUCLEUS_STAGING_URL=https://nucleus-staging-0a33.up.railway.app`, `NUCLEUS_PROD_URL=https://nucleus-production.up.railway.app`
-3. Add Railway cron service for maintenance workers per `.maintenance/schedule.yaml`
 
 ---
 
@@ -336,5 +264,5 @@ Sprint worker + maintenance pipeline live on master (commit 23db922).
 | DATAFORSEO_LOGIN / PASSWORD | Live | Keyword ranks |
 | SUPER_ADMIN_EMAIL | Live | Admin panel seed |
 | REDIS_URL | Pending | Distributed cache (Sprint 29+) |
-| GOOGLE_CLIENT_ID | Pending | Google Sign-In (Sprint 23) |
+| GOOGLE_CLIENT_ID | Pending | Google Sign-In |
 | RAILWAY_STAGING_DEPLOY_WEBHOOK | Pending | GitHub Actions → staging deploy trigger |

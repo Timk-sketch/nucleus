@@ -27,5 +27,10 @@ public interface INucleusDbContext
     DbSet<SchemaTemplate> SchemaTemplates { get; }
     DbSet<OutreachQueueItem> OutreachQueueItems { get; }
 
+    // Sprint 28 — Studio Hub
+    DbSet<WebsitePage> WebsitePages { get; }
+    DbSet<DesignAsset> DesignAssets { get; }
+    DbSet<VideoAsset> VideoAssets { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

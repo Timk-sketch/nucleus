@@ -1,0 +1,413 @@
+@page "/studio/pages"
+@attribute [Authorize]
+@layout StudioLayout
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>Page Manager — Studio Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Page Manager</h1>
+        <p class="page-subtitle">Create, edit, and publish website pages for all your brands.</p>
+    </div>
+    <button class="btn-hub" @onclick="OpenCreateModal">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        New Page
+    </button>
+</div>
+
+@if (_brands.Count == 0 && !_loading)
+{
+    <div class="empty-state">No brands yet. <a href="/brands">Add a brand</a> to start managing pages.</div>
+}
+else
+{
+    <div class="brand-pill-row">
+        @foreach (var b in _brands)
+        {
+            <button class="brand-pill-btn @(_selectedBrand?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                    @onclick="() => SelectBrand(b)">
+                <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+                @b.Name
+            </button>
+        }
+    </div>
+}
+
+@if (_error != null)
+{
+    <div class="alert-error">@_error</div>
+}
+@if (_successMsg != null)
+{
+    <div class="alert-success">@_successMsg</div>
+}
+
+@if (_selectedBrand != null)
+{
+    <!-- Stats -->
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:24px;">
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Total Pages</div>
+            <div class="stat-value">@(_library?.TotalPages ?? 0)</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Published</div>
+            <div class="stat-value" style="color:var(--hub-color)">@(_library?.PublishedPages ?? 0)</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Drafts</div>
+            <div class="stat-value">@(_library?.DraftPages ?? 0)</div>
+        </div>
+    </div>
+
+    <!-- Status filter -->
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+        <button class="brand-pill-btn @(_statusFilter == "all" ? "brand-pill-btn--active" : "")"
+                style="font-size:12px;padding:5px 12px;" @onclick='() => SetStatusFilter("all")'>All</button>
+        <button class="brand-pill-btn @(_statusFilter == "published" ? "brand-pill-btn--active" : "")"
+                style="font-size:12px;padding:5px 12px;" @onclick='() => SetStatusFilter("published")'>Published</button>
+        <button class="brand-pill-btn @(_statusFilter == "draft" ? "brand-pill-btn--active" : "")"
+                style="font-size:12px;padding:5px 12px;" @onclick='() => SetStatusFilter("draft")'>Draft</button>
+        <button class="brand-pill-btn @(_statusFilter == "archived" ? "brand-pill-btn--active" : "")"
+                style="font-size:12px;padding:5px 12px;" @onclick='() => SetStatusFilter("archived")'>Archived</button>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+    }
+    else if (_library?.Pages.Count == 0)
+    {
+        <div class="empty-state">
+            No pages found.
+            <button class="btn-hub" style="margin-top:12px;" @onclick="OpenCreateModal">
+                Create your first page →
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Slug</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Updated</th>
+                        <th>Published</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var pg in _library!.Pages)
+                    {
+                        <tr>
+                            <td>
+                                <span style="font-weight:600;color:var(--color-text);">@pg.Title</span>
+                                @if (!string.IsNullOrEmpty(pg.MetaDescription))
+                                {
+                                    <div style="font-size:11px;color:var(--color-muted);margin-top:2px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                        @pg.MetaDescription
+                                    </div>
+                                }
+                            </td>
+                            <td style="font-family:monospace;font-size:12px;color:var(--hub-color);">@("/" + pg.Slug)</td>
+                            <td>
+                                <span class="status-badge status-badge--muted" style="font-size:11px;">@pg.PageType</span>
+                            </td>
+                            <td>
+                                <span class="status-badge status-badge--@StatusClass(pg.Status)">@pg.Status</span>
+                            </td>
+                            <td style="font-size:12px;color:var(--color-muted);">@pg.UpdatedAt.ToString("MMM d, yyyy")</td>
+                            <td style="font-size:12px;color:var(--color-muted);">
+                                @(pg.PublishedAt.HasValue ? pg.PublishedAt.Value.ToString("MMM d, yyyy") : "—")
+                            </td>
+                            <td>
+                                <div style="display:flex;gap:6px;">
+                                    <a href="@($"/studio/pages/editor?id={pg.Id}")"
+                                       class="btn-secondary" style="font-size:12px;padding:4px 10px;text-decoration:none;">
+                                        Edit
+                                    </a>
+                                    @if (pg.Status != "published")
+                                    {
+                                        <button class="btn-hub" style="font-size:12px;padding:4px 10px;"
+                                                @onclick="() => PublishPage(pg.Id)">Publish</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn-secondary" style="font-size:12px;padding:4px 10px;"
+                                                @onclick="() => UnpublishPage(pg.Id)">Unpublish</button>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;">
+            <span style="font-size:13px;color:var(--color-muted);">Page @_page</span>
+            <div style="display:flex;gap:8px;">
+                <button class="btn-secondary" @onclick="PrevPage" disabled="@(_page <= 1 || _loading)">&#8592; Prev</button>
+                <button class="btn-secondary" @onclick="NextPage" disabled="@((_library?.Pages.Count ?? 0) < _pageSize || _loading)">Next &#8594;</button>
+            </div>
+        </div>
+    }
+}
+
+<!-- Create Page Modal -->
+@if (_showCreateModal && _selectedBrand != null)
+{
+    <div class="modal-backdrop" @onclick="CloseCreateModal">
+        <div class="modal" style="max-width:580px;" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h2 class="modal-title">New Page</h2>
+                <button class="modal-close" @onclick="CloseCreateModal">&#x2715;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Title <span style="color:#ef4444;">*</span></label>
+                    <input type="text" class="form-input" @bind="_newTitle" placeholder="e.g. About Us" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Slug <span style="color:#ef4444;">*</span></label>
+                    <input type="text" class="form-input" @bind="_newSlug" placeholder="e.g. about-us" />
+                    <p style="font-size:11px;color:var(--color-muted);margin-top:4px;">
+                        Lowercase, hyphens only. e.g. <code>services/registration</code>
+                    </p>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Page Type</label>
+                    <select class="form-input" @bind="_newPageType">
+                        <option value="other">Other</option>
+                        <option value="homepage">Homepage</option>
+                        <option value="landing">Landing Page</option>
+                        <option value="service">Service Page</option>
+                        <option value="blog">Blog Post</option>
+                        <option value="legal">Legal</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">SEO Title</label>
+                    <input type="text" class="form-input" @bind="_newSeoTitle" placeholder="e.g. About Us | Brand Name" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Meta Description</label>
+                    <textarea class="form-input" rows="2" @bind="_newMetaDescription"
+                              placeholder="Short description for search engines…"></textarea>
+                </div>
+                @if (_modalError != null)
+                {
+                    <div class="alert-error" style="margin-top:8px;">@_modalError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" @onclick="CloseCreateModal">Cancel</button>
+                <button class="btn-hub" @onclick="SubmitCreate" disabled="@_submitting">
+                    @if (_submitting) { <span>Creating&#8230;</span> } else { <span>Create Page</span> }
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private PageLibrary? _library;
+    private bool _loading, _submitting;
+    private string? _error, _successMsg;
+    private string _statusFilter = "all";
+    private int _page = 1, _pageSize = 50;
+
+    // Create modal
+    private bool _showCreateModal;
+    private string? _modalError;
+    private string _newTitle = "";
+    private string _newSlug = "";
+    private string _newPageType = "other";
+    private string? _newSeoTitle;
+    private string? _newMetaDescription;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _page = 1;
+        _error = _successMsg = null;
+        await LoadLibrary();
+    }
+
+    private async Task LoadLibrary()
+    {
+        if (_selectedBrand is null) return;
+        _loading = true;
+        _library = null;
+        try
+        {
+            var status = _statusFilter == "all" ? "" : $"&status={_statusFilter}";
+            var url = $"api/studio/pages?brandId={_selectedBrand.Id}{status}&page={_page}&pageSize={_pageSize}";
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<PageLibrary>>(url);
+            _library = resp?.Data;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task SetStatusFilter(string s)
+    {
+        _statusFilter = s;
+        _page = 1;
+        await LoadLibrary();
+    }
+
+    private async Task PrevPage()
+    {
+        if (_page <= 1) return;
+        _page--;
+        await LoadLibrary();
+    }
+
+    private async Task NextPage()
+    {
+        _page++;
+        await LoadLibrary();
+    }
+
+    private async Task PublishPage(Guid id)
+    {
+        _error = _successMsg = null;
+        try
+        {
+            var resp = await Http.PutAsJsonAsync($"api/studio/pages/{id}/publish", new { });
+            if (resp.IsSuccessStatusCode)
+            {
+                _successMsg = "Page published!";
+                await LoadLibrary();
+            }
+            else
+                _error = $"Failed: {await resp.Content.ReadAsStringAsync()}";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task UnpublishPage(Guid id)
+    {
+        _error = _successMsg = null;
+        try
+        {
+            var resp = await Http.PutAsJsonAsync($"api/studio/pages/{id}/unpublish", new { });
+            if (resp.IsSuccessStatusCode)
+            {
+                _successMsg = "Page moved back to draft.";
+                await LoadLibrary();
+            }
+            else
+                _error = $"Failed: {await resp.Content.ReadAsStringAsync()}";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private void OpenCreateModal()
+    {
+        _newTitle = "";
+        _newSlug = "";
+        _newSeoTitle = null;
+        _newMetaDescription = null;
+        _newPageType = "other";
+        _modalError = null;
+        _showCreateModal = true;
+    }
+
+    private void CloseCreateModal()
+    {
+        _showCreateModal = false;
+        _modalError = null;
+    }
+
+    private async Task SubmitCreate()
+    {
+        if (_selectedBrand is null) return;
+        _modalError = null;
+
+        if (string.IsNullOrWhiteSpace(_newTitle)) { _modalError = "Title is required."; return; }
+        if (string.IsNullOrWhiteSpace(_newSlug))  { _modalError = "Slug is required."; return; }
+
+        _submitting = true;
+        try
+        {
+            var payload = new
+            {
+                BrandId = _selectedBrand.Id,
+                Slug = _newSlug.Trim().ToLower(),
+                Title = _newTitle.Trim(),
+                PageType = _newPageType,
+                SeoTitle = string.IsNullOrWhiteSpace(_newSeoTitle) ? (string?)null : _newSeoTitle.Trim(),
+                MetaDescription = string.IsNullOrWhiteSpace(_newMetaDescription) ? (string?)null : _newMetaDescription.Trim(),
+            };
+            var resp = await Http.PostAsJsonAsync("api/studio/pages", payload);
+            if (resp.IsSuccessStatusCode)
+            {
+                _successMsg = $"Page '{_newTitle}' created!";
+                _showCreateModal = false;
+                await LoadLibrary();
+            }
+            else
+            {
+                _modalError = $"Failed: {await resp.Content.ReadAsStringAsync()}";
+            }
+        }
+        catch (Exception ex) { _modalError = ex.Message; }
+        finally { _submitting = false; }
+    }
+
+    private static string StatusClass(string status) => status switch
+    {
+        "published" => "success",
+        "archived"  => "danger",
+        _           => "muted",
+    };
+
+    // DTOs
+    private class BrandItem
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string PrimaryColor { get; set; } = "#ec4899";
+    }
+    private class PageLibrary
+    {
+        public Guid BrandId { get; set; }
+        public string BrandName { get; set; } = "";
+        public int TotalPages { get; set; }
+        public int PublishedPages { get; set; }
+        public int DraftPages { get; set; }
+        public List<PageRow> Pages { get; set; } = [];
+    }
+    private class PageRow
+    {
+        public Guid Id { get; set; }
+        public string Slug { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string PageType { get; set; } = "";
+        public string? MetaDescription { get; set; }
+        public string Status { get; set; } = "";
+        public DateTimeOffset? PublishedAt { get; set; }
+        public DateTimeOffset UpdatedAt { get; set; }
+    }
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

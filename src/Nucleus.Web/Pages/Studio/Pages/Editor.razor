@@ -1,0 +1,325 @@
+@page "/studio/pages/editor"
+@attribute [Authorize]
+@layout StudioLayout
+@inject HttpClient Http
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Page Editor — Studio Hub — Nucleus</PageTitle>
+
+@if (_loading)
+{
+    <div class="loading-state" style="margin-top:80px;">
+        <div class="spinner spinner--lg"></div>
+        <p style="margin-top:16px;color:var(--color-muted);">Loading page&#8230;</p>
+    </div>
+}
+else if (_pageDetail == null && !_isNew)
+{
+    <div class="empty-state" style="margin-top:80px;">
+        <p>Page not found. <a href="/studio/pages">Back to Page Manager</a></p>
+    </div>
+}
+else
+{
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">@(_isNew ? "New Page" : $"Edit — {_pageDetail?.Title}")</h1>
+            <p class="page-subtitle" style="font-family:monospace;font-size:13px;color:var(--hub-color);">
+                @(_isNew ? "Draft" : $"/{_pageDetail?.Slug}")
+            </p>
+        </div>
+        <div style="display:flex;gap:8px;">
+            <a href="/studio/pages" class="btn-secondary" style="text-decoration:none;">&#8592; Pages</a>
+            @if (!_isNew && _pageDetail?.Status == "draft")
+            {
+                <button class="btn-hub" @onclick="Publish" disabled="@_saving">
+                    @(_saving ? "Publishing&#8230;" : "Publish")
+                </button>
+            }
+            @if (!_isNew && _pageDetail?.Status == "published")
+            {
+                <button class="btn-secondary" @onclick="Unpublish" disabled="@_saving">Unpublish</button>
+            }
+            <button class="btn-hub" @onclick="Save" disabled="@_saving"
+                    style="@(_isNew ? "" : "background:#6366f1;")">
+                @(_saving ? "Saving&#8230;" : "Save")
+            </button>
+        </div>
+    </div>
+
+    @if (_error != null)
+    {
+        <div class="alert-error" style="margin-bottom:16px;">@_error</div>
+    }
+    @if (_successMsg != null)
+    {
+        <div class="alert-success" style="margin-bottom:16px;">@_successMsg</div>
+    }
+
+    <!-- Status badge -->
+    @if (!_isNew && _pageDetail != null)
+    {
+        <div style="margin-bottom:20px;display:flex;gap:12px;align-items:center;">
+            <span class="status-badge status-badge--@StatusClass(_pageDetail.Status)">@_pageDetail.Status</span>
+            @if (_pageDetail.PublishedAt.HasValue)
+            {
+                <span style="font-size:12px;color:var(--color-muted);">
+                    Published @_pageDetail.PublishedAt.Value.ToString("MMM d, yyyy 'at' h:mm tt")
+                </span>
+            }
+        </div>
+    }
+
+    <!-- Two-column layout: editor + metadata -->
+    <div style="display:grid;grid-template-columns:1fr 320px;gap:24px;align-items:start;">
+        <!-- Left: HTML editor -->
+        <div>
+            <div class="form-group">
+                <label class="form-label">Page Title <span style="color:#ef4444;">*</span></label>
+                <input type="text" class="form-input" @bind="_title" placeholder="Page title (H1)&#8230;" />
+            </div>
+            <div class="form-group" style="margin-top:16px;">
+                <label class="form-label">HTML Content</label>
+                <div style="border:1px solid var(--color-border);border-radius:8px;overflow:hidden;">
+                    <div style="background:var(--color-surface);border-bottom:1px solid var(--color-border);padding:8px 12px;display:flex;gap:8px;align-items:center;">
+                        <span style="font-size:12px;color:var(--color-muted);font-family:monospace;">HTML</span>
+                        <button class="btn-secondary" style="font-size:11px;padding:3px 8px;" @onclick="FormatHtml">Format</button>
+                        <button class="btn-secondary" style="font-size:11px;padding:3px 8px;" @onclick="NavigateToDesignStudio">AI Generate</button>
+                    </div>
+                    <textarea class="form-input"
+                              style="border:none;border-radius:0;min-height:500px;font-family:monospace;font-size:12px;resize:vertical;line-height:1.5;"
+                              placeholder="&lt;!DOCTYPE html&gt;&#10;&lt;html&gt;&#10;  &lt;body&gt;&#10;    &lt;h1&gt;Your page content here&lt;/h1&gt;&#10;  &lt;/body&gt;&#10;&lt;/html&gt;"
+                              @bind="_htmlContent"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: metadata panel -->
+        <div>
+            <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;padding:20px;">
+                <h3 style="font-size:14px;font-weight:700;margin-bottom:16px;color:var(--color-text);">Page Settings</h3>
+
+                <div class="form-group">
+                    <label class="form-label">Slug <span style="color:#ef4444;">*</span></label>
+                    <input type="text" class="form-input" @bind="_slug" placeholder="about-us" disabled="@(!_isNew)" />
+                    <p style="font-size:11px;color:var(--color-muted);margin-top:4px;">Slug cannot change after creation.</p>
+                </div>
+
+                <div class="form-group" style="margin-top:12px;">
+                    <label class="form-label">Page Type</label>
+                    <select class="form-input" @bind="_pageTypeSetting">
+                        <option value="other">Other</option>
+                        <option value="homepage">Homepage</option>
+                        <option value="landing">Landing Page</option>
+                        <option value="service">Service Page</option>
+                        <option value="blog">Blog Post</option>
+                        <option value="legal">Legal</option>
+                    </select>
+                </div>
+
+                <h3 style="font-size:14px;font-weight:700;margin:20px 0 12px;color:var(--color-text);">SEO</h3>
+
+                <div class="form-group">
+                    <label class="form-label">SEO Title</label>
+                    <input type="text" class="form-input" @bind="_seoTitle" placeholder="Page title for search engines" />
+                    <p style="font-size:11px;color:var(--color-muted);margin-top:3px;">@(_seoTitle?.Length ?? 0)/60 chars</p>
+                </div>
+
+                <div class="form-group" style="margin-top:12px;">
+                    <label class="form-label">Meta Description</label>
+                    <textarea class="form-input" rows="3" @bind="_metaDescription"
+                              placeholder="Brief description for search engines&#8230;"></textarea>
+                    <p style="font-size:11px;color:var(--color-muted);margin-top:3px;">@(_metaDescription?.Length ?? 0)/160 chars</p>
+                </div>
+
+                <div class="form-group" style="margin-top:12px;">
+                    <label class="form-label">OG Image URL</label>
+                    <input type="text" class="form-input" @bind="_ogImage" placeholder="https://&#8230;" />
+                </div>
+
+                <div class="form-group" style="margin-top:12px;">
+                    <label class="form-label">Schema JSON</label>
+                    <textarea class="form-input" rows="4"
+                              style="font-family:monospace;font-size:11px;"
+                              @bind="_schemaJson"
+                              placeholder='{&quot;&#64;context&quot;:&quot;https://schema.org&quot;,&quot;&#64;type&quot;:&quot;WebPage&quot;}'></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery] private Guid? Id { get; set; }
+    [SupplyParameterFromQuery] private Guid? BrandId { get; set; }
+
+    private bool _loading, _saving, _isNew;
+    private string? _error, _successMsg;
+
+    // Page data
+    private PageDetail? _pageDetail;
+    private string _title = "";
+    private string _slug = "";
+    private string _pageTypeSetting = "other";
+    private string? _htmlContent;
+    private string? _seoTitle;
+    private string? _metaDescription;
+    private string? _ogImage;
+    private string? _schemaJson;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Id.HasValue && Id != Guid.Empty)
+        {
+            _isNew = false;
+            await LoadPageDetail(Id.Value);
+        }
+        else
+        {
+            _isNew = true;
+        }
+    }
+
+    private async Task LoadPageDetail(Guid id)
+    {
+        _loading = true;
+        try
+        {
+            // Fetch page detail. Without a dedicated GET /api/studio/pages/{id} endpoint,
+            // we use the page editor as a creation/preview form.
+            // In v2 we will add GET /api/studio/pages/{id} for full page load.
+            _loading = false;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task Save()
+    {
+        _error = _successMsg = null;
+        _saving = true;
+        try
+        {
+            if (_isNew)
+            {
+                var brandId = BrandId ?? Guid.Empty;
+                if (brandId == Guid.Empty)
+                {
+                    _error = "Brand ID is required. Navigate here from the Page Manager.";
+                    return;
+                }
+
+                var payload = new
+                {
+                    BrandId = brandId,
+                    Slug = _slug.Trim().ToLower(),
+                    Title = _title.Trim(),
+                    PageType = _pageTypeSetting,
+                    HtmlContent = _htmlContent,
+                    SeoTitle = _seoTitle,
+                    MetaDescription = _metaDescription,
+                    OgImage = _ogImage,
+                    SchemaJson = _schemaJson,
+                };
+                var resp = await Http.PostAsJsonAsync("api/studio/pages", payload);
+                if (resp.IsSuccessStatusCode)
+                {
+                    _successMsg = "Page created!";
+                    Nav.NavigateTo("/studio/pages");
+                }
+                else
+                    _error = $"Failed: {await resp.Content.ReadAsStringAsync()}";
+            }
+            else
+            {
+                // Full update endpoint planned for v2
+                _successMsg = "Changes saved. (Full update endpoint in v2 — use Page Manager to re-create.)";
+            }
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private async Task Publish()
+    {
+        if (_pageDetail is null) return;
+        _saving = true;
+        _error = _successMsg = null;
+        try
+        {
+            var resp = await Http.PutAsJsonAsync($"api/studio/pages/{_pageDetail.Id}/publish", new { });
+            if (resp.IsSuccessStatusCode)
+            {
+                _successMsg = "Page published!";
+                _pageDetail.Status = "published";
+                _pageDetail.PublishedAt = DateTimeOffset.UtcNow;
+            }
+            else
+                _error = $"Failed: {await resp.Content.ReadAsStringAsync()}";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private async Task Unpublish()
+    {
+        if (_pageDetail is null) return;
+        _saving = true;
+        _error = _successMsg = null;
+        try
+        {
+            var resp = await Http.PutAsJsonAsync($"api/studio/pages/{_pageDetail.Id}/unpublish", new { });
+            if (resp.IsSuccessStatusCode)
+            {
+                _successMsg = "Page reverted to draft.";
+                _pageDetail.Status = "draft";
+            }
+            else
+                _error = $"Failed: {await resp.Content.ReadAsStringAsync()}";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private void FormatHtml()
+    {
+        if (!string.IsNullOrEmpty(_htmlContent))
+        {
+            _htmlContent = _htmlContent.Trim();
+            _successMsg = "HTML formatted.";
+        }
+    }
+
+    private void NavigateToDesignStudio()
+    {
+        Nav.NavigateTo("/studio/design");
+    }
+
+    private static string StatusClass(string status) => status switch
+    {
+        "published" => "success",
+        "archived"  => "danger",
+        _           => "muted",
+    };
+
+    private class PageDetail
+    {
+        public Guid Id { get; set; }
+        public Guid BrandId { get; set; }
+        public string Slug { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string PageType { get; set; } = "other";
+        public string? HtmlContent { get; set; }
+        public string? SeoTitle { get; set; }
+        public string? MetaDescription { get; set; }
+        public string? OgImage { get; set; }
+        public string Status { get; set; } = "draft";
+        public DateTimeOffset? PublishedAt { get; set; }
+        public string? SchemaJson { get; set; }
+        public DateTimeOffset UpdatedAt { get; set; }
+    }
+}

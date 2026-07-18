@@ -1,0 +1,294 @@
+@page "/studio/images"
+@attribute [Authorize]
+@layout StudioLayout
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>Image Generator — Studio Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Image Generator</h1>
+        <p class="page-subtitle">Generate on-brand images with AI (Flux). Hero shots, blog headers, social graphics — all saved to your Asset Library.</p>
+    </div>
+</div>
+
+@if (_brands.Count == 0 && !_loading)
+{
+    <div class="empty-state">No brands yet. <a href="/brands">Add a brand</a> to generate images.</div>
+}
+else
+{
+    <div class="brand-pill-row">
+        @foreach (var b in _brands)
+        {
+            <button class="brand-pill-btn @(_selectedBrand?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                    @onclick="() => SelectBrand(b)">
+                <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+                @b.Name
+            </button>
+        }
+    </div>
+}
+
+@if (_error != null)
+{
+    <div class="alert-error">@_error</div>
+}
+@if (_successMsg != null)
+{
+    <div class="alert-success">@_successMsg</div>
+}
+
+@if (_selectedBrand != null)
+{
+    <div style="display:grid;grid-template-columns:420px 1fr;gap:24px;align-items:start;">
+        <!-- Generator panel -->
+        <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;padding:24px;">
+            <h2 style="font-size:15px;font-weight:700;margin-bottom:20px;">Generate Image</h2>
+
+            <div class="form-group">
+                <label class="form-label">Prompt <span style="color:#ef4444;">*</span></label>
+                <textarea class="form-input" rows="4" @bind="_prompt"
+                          placeholder="e.g. A professional hero image for a vehicle registration service — modern, clean, with a car silhouette and Montana mountains in the background. Photorealistic."></textarea>
+            </div>
+
+            <div class="form-group" style="margin-top:12px;">
+                <label class="form-label">Style Hint</label>
+                <input type="text" class="form-input" @bind="_styleHint"
+                       placeholder="e.g. photorealistic, flat design, minimalist, cinematic" />
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+                <div class="form-group">
+                    <label class="form-label">Width (px)</label>
+                    <select class="form-input" @bind="_width">
+                        <option value="512">512</option>
+                        <option value="768">768</option>
+                        <option value="1024" selected>1024</option>
+                        <option value="1280">1280</option>
+                        <option value="1536">1536</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Height (px)</label>
+                    <select class="form-input" @bind="_height">
+                        <option value="512">512</option>
+                        <option value="768">768</option>
+                        <option value="1024" selected>1024</option>
+                        <option value="1280">1280</option>
+                        <option value="1536">1536</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Preset sizes -->
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+                @foreach (var preset in _presets)
+                {
+                    <button class="brand-pill-btn" style="font-size:11px;padding:4px 8px;"
+                            @onclick="() => ApplyPreset(preset)">
+                        @preset.Label
+                    </button>
+                }
+            </div>
+
+            <button class="btn-hub" @onclick="Generate" disabled="@_generating"
+                    style="width:100%;margin-top:20px;padding:13px;justify-content:center;">
+                @if (_generating)
+                {
+                    <div class="spinner" style="width:16px;height:16px;margin-right:8px;"></div>
+                    <span>Generating…</span>
+                }
+                else
+                {
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px;">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                        <circle cx="8.5" cy="8.5" r="1.5"/>
+                        <polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                    <span>Generate Image</span>
+                }
+            </button>
+        </div>
+
+        <!-- Results / Gallery -->
+        <div>
+            @if (_generatedAssets.Count == 0 && !_generating)
+            {
+                <div class="empty-state" style="min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--color-border)" stroke-width="1.5" style="margin-bottom:16px;">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                        <circle cx="8.5" cy="8.5" r="1.5"/>
+                        <polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                    <p style="color:var(--color-muted);">Generated images will appear here.</p>
+                </div>
+            }
+            else
+            {
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;">
+                    @foreach (var asset in _generatedAssets)
+                    {
+                        <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:10px;overflow:hidden;">
+                            <img src="@asset.Url" alt="@asset.Name"
+                                 style="width:100%;height:160px;object-fit:cover;display:block;" />
+                            <div style="padding:12px;">
+                                <p style="font-size:12px;font-weight:600;color:var(--color-text);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">@asset.Name</p>
+                                @if (!string.IsNullOrEmpty(asset.PromptUsed))
+                                {
+                                    <p style="font-size:11px;color:var(--color-muted);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">
+                                        @asset.PromptUsed
+                                    </p>
+                                }
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+                                    <span style="font-size:11px;color:var(--color-muted);">@asset.Width×@asset.Height</span>
+                                    <button class="btn-secondary" style="font-size:11px;padding:4px 8px;"
+                                            @onclick="() => CopyUrl(asset.Url)">
+                                        Copy URL
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Recent generated assets from library -->
+    @if (_recentGenerated.Count > 0)
+    {
+        <div style="margin-top:32px;">
+            <h3 style="font-size:14px;font-weight:700;margin-bottom:16px;color:var(--color-text);">
+                Previously Generated
+            </h3>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;">
+                @foreach (var asset in _recentGenerated)
+                {
+                    <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:8px;overflow:hidden;">
+                        <img src="@asset.Url" alt="@asset.Name"
+                             style="width:100%;height:120px;object-fit:cover;display:block;" />
+                        <div style="padding:8px;">
+                            <p style="font-size:11px;color:var(--color-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">@asset.Name</p>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private List<AssetItem> _generatedAssets = [];
+    private List<AssetItem> _recentGenerated = [];
+    private bool _loading, _generating;
+    private string? _error, _successMsg;
+
+    private string _prompt = "";
+    private string? _styleHint;
+    private int _width = 1024, _height = 1024;
+
+    private readonly List<SizePreset> _presets =
+    [
+        new("Hero (1280×720)", 1280, 720),
+        new("Square (1024×1024)", 1024, 1024),
+        new("Portrait (768×1024)", 768, 1024),
+        new("Social (1200×630)", 1200, 630),
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+            _brands = resp?.Data ?? [];
+            if (_brands.Count > 0) await SelectBrand(_brands[0]);
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _error = _successMsg = null;
+        _generatedAssets = [];
+        await LoadRecentGenerated();
+    }
+
+    private async Task LoadRecentGenerated()
+    {
+        if (_selectedBrand is null) return;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<AssetLibrary>>(
+                $"api/studio/assets?brandId={_selectedBrand.Id}&assetType=generated&pageSize=12");
+            _recentGenerated = resp?.Data?.Assets ?? [];
+        }
+        catch { /* silent */ }
+    }
+
+    private async Task Generate()
+    {
+        if (_selectedBrand is null || string.IsNullOrWhiteSpace(_prompt)) return;
+        _generating = true;
+        _error = _successMsg = null;
+        try
+        {
+            var payload = new
+            {
+                BrandId = _selectedBrand.Id,
+                Prompt = _prompt.Trim(),
+                StyleHint = string.IsNullOrWhiteSpace(_styleHint) ? (string?)null : _styleHint.Trim(),
+                Width = _width,
+                Height = _height,
+            };
+            var resp = await Http.PostAsJsonAsync("api/studio/images/generate", payload);
+            if (resp.IsSuccessStatusCode)
+            {
+                var result = await resp.Content.ReadFromJsonAsync<ApiWrapper<AssetItem>>();
+                if (result?.Data != null)
+                {
+                    _generatedAssets.Insert(0, result.Data);
+                    _recentGenerated.Insert(0, result.Data);
+                    _successMsg = "Image generated and saved to Asset Library!";
+                }
+            }
+            else
+                _error = $"Failed: {await resp.Content.ReadAsStringAsync()}";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _generating = false; }
+    }
+
+    private void ApplyPreset(SizePreset preset)
+    {
+        _width = preset.Width;
+        _height = preset.Height;
+    }
+
+    private async Task CopyUrl(string url)
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", url); _successMsg = "URL copied!"; }
+        catch { /* clipboard not available */ }
+    }
+
+    // DTOs
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; public string PrimaryColor { get; set; } = "#ec4899"; }
+    private class AssetItem
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string AssetType { get; set; } = "";
+        public string Url { get; set; } = "";
+        public int? Width { get; set; }
+        public int? Height { get; set; }
+        public string? PromptUsed { get; set; }
+    }
+    private class AssetLibrary { public List<AssetItem> Assets { get; set; } = []; }
+    private record SizePreset(string Label, int Width, int Height);
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

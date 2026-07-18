@@ -35,6 +35,11 @@ public class NucleusDbContext(
     public DbSet<SchemaTemplate> SchemaTemplates => Set<SchemaTemplate>();
     public DbSet<OutreachQueueItem> OutreachQueueItems => Set<OutreachQueueItem>();
 
+    // Sprint 28 — Studio Hub
+    public DbSet<WebsitePage> WebsitePages => Set<WebsitePage>();
+    public DbSet<DesignAsset> DesignAssets => Set<DesignAsset>();
+    public DbSet<VideoAsset> VideoAssets => Set<VideoAsset>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -311,6 +316,61 @@ public class NucleusDbContext(
         });
 
         // ── End Sprint 27 ─────────────────────────────────────────────────
+
+        // ── Sprint 28: Studio Hub entities ────────────────────────────────
+
+        builder.Entity<WebsitePage>(e =>
+        {
+            e.ToTable("website_pages");
+            e.HasKey(p => p.Id);
+            e.HasIndex(p => p.TenantId);
+            e.HasIndex(p => new { p.TenantId, p.BrandId });
+            e.HasIndex(p => new { p.BrandId, p.Status });
+            e.HasIndex(p => new { p.BrandId, p.Slug }).IsUnique();
+            e.Property(p => p.Slug).HasMaxLength(300).IsRequired();
+            e.Property(p => p.Title).HasMaxLength(300).IsRequired();
+            e.Property(p => p.PageType).HasMaxLength(50).HasDefaultValue("other");
+            e.Property(p => p.SeoTitle).HasMaxLength(300);
+            e.Property(p => p.MetaDescription).HasMaxLength(500);
+            e.Property(p => p.OgImage).HasMaxLength(500);
+            e.Property(p => p.Status).HasMaxLength(50).HasDefaultValue("draft");
+            e.Property(p => p.SchemaJson).HasColumnType("jsonb");
+            e.HasOne(p => p.Brand).WithMany().HasForeignKey(p => p.BrandId);
+        });
+
+        builder.Entity<DesignAsset>(e =>
+        {
+            e.ToTable("design_assets");
+            e.HasKey(a => a.Id);
+            e.HasIndex(a => a.TenantId);
+            e.HasIndex(a => new { a.TenantId, a.BrandId });
+            e.HasIndex(a => new { a.BrandId, a.AssetType });
+            e.HasIndex(a => new { a.BrandId, a.UploadedAt });
+            e.Property(a => a.Name).HasMaxLength(300).IsRequired();
+            e.Property(a => a.AssetType).HasMaxLength(50).HasDefaultValue("image");
+            e.Property(a => a.Url).HasMaxLength(1000).IsRequired();
+            e.Property(a => a.MimeType).HasMaxLength(100);
+            e.Property(a => a.PromptUsed).HasMaxLength(2000);
+            e.HasOne(a => a.Brand).WithMany().HasForeignKey(a => a.BrandId);
+        });
+
+        builder.Entity<VideoAsset>(e =>
+        {
+            e.ToTable("video_assets");
+            e.HasKey(v => v.Id);
+            e.HasIndex(v => v.TenantId);
+            e.HasIndex(v => new { v.TenantId, v.BrandId });
+            e.HasIndex(v => new { v.BrandId, v.Platform });
+            e.HasIndex(v => new { v.BrandId, v.UploadedAt });
+            e.Property(v => v.Name).HasMaxLength(300).IsRequired();
+            e.Property(v => v.Url).HasMaxLength(1000).IsRequired();
+            e.Property(v => v.ThumbnailUrl).HasMaxLength(1000);
+            e.Property(v => v.Platform).HasMaxLength(50).HasDefaultValue("other");
+            e.Property(v => v.Description).HasMaxLength(2000);
+            e.HasOne(v => v.Brand).WithMany().HasForeignKey(v => v.BrandId);
+        });
+
+        // ── End Sprint 28 ─────────────────────────────────────────────────
 
         // Global tenant query filter on all TenantEntity subclasses
         var tenantId = tenantService.TenantId;

@@ -1,0 +1,382 @@
+@page "/studio/assets"
+@attribute [Authorize]
+@layout StudioLayout
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>Asset Library — Studio Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Asset Library</h1>
+        <p class="page-subtitle">Central storage for all brand assets — images, documents, generated content, and more.</p>
+    </div>
+    <button class="btn-hub" @onclick="OpenUploadModal">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Add Asset
+    </button>
+</div>
+
+@if (_brands.Count == 0 && !_loading)
+{
+    <div class="empty-state">No brands yet. <a href="/brands">Add a brand</a> to manage assets.</div>
+}
+else
+{
+    <div class="brand-pill-row">
+        @foreach (var b in _brands)
+        {
+            <button class="brand-pill-btn @(_selectedBrand?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                    @onclick="() => SelectBrand(b)">
+                <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+                @b.Name
+            </button>
+        }
+    </div>
+}
+
+@if (_error != null)
+{
+    <div class="alert-error">@_error</div>
+}
+@if (_successMsg != null)
+{
+    <div class="alert-success">@_successMsg</div>
+}
+
+@if (_selectedBrand != null)
+{
+    <!-- Stats -->
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:24px;">
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Total Assets</div>
+            <div class="stat-value">@(_library?.TotalAssets ?? 0)</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Images</div>
+            <div class="stat-value" style="color:var(--hub-color)">@(_library?.ImageCount ?? 0)</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">AI Generated</div>
+            <div class="stat-value">@(_library?.GeneratedCount ?? 0)</div>
+        </div>
+    </div>
+
+    <!-- Asset type filter -->
+    <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
+        <button class="brand-pill-btn @(_typeFilter == "all" ? "brand-pill-btn--active" : "")"
+                style="font-size:12px;padding:5px 12px;" @onclick='() => SetTypeFilter("all")'>All</button>
+        <button class="brand-pill-btn @(_typeFilter == "image" ? "brand-pill-btn--active" : "")"
+                style="font-size:12px;padding:5px 12px;" @onclick='() => SetTypeFilter("image")'>Image</button>
+        <button class="brand-pill-btn @(_typeFilter == "generated" ? "brand-pill-btn--active" : "")"
+                style="font-size:12px;padding:5px 12px;" @onclick='() => SetTypeFilter("generated")'>Generated</button>
+        <button class="brand-pill-btn @(_typeFilter == "document" ? "brand-pill-btn--active" : "")"
+                style="font-size:12px;padding:5px 12px;" @onclick='() => SetTypeFilter("document")'>Document</button>
+        <button class="brand-pill-btn @(_typeFilter == "svg" ? "brand-pill-btn--active" : "")"
+                style="font-size:12px;padding:5px 12px;" @onclick='() => SetTypeFilter("svg")'>SVG</button>
+        <button class="brand-pill-btn @(_typeFilter == "font" ? "brand-pill-btn--active" : "")"
+                style="font-size:12px;padding:5px 12px;" @onclick='() => SetTypeFilter("font")'>Font</button>
+        <button class="brand-pill-btn @(_typeFilter == "other" ? "brand-pill-btn--active" : "")"
+                style="font-size:12px;padding:5px 12px;" @onclick='() => SetTypeFilter("other")'>Other</button>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+    }
+    else if (_library?.Assets.Count == 0)
+    {
+        <div class="empty-state">
+            No assets found.
+            <div style="display:flex;gap:8px;margin-top:12px;justify-content:center;">
+                <button class="btn-hub" @onclick="OpenUploadModal">Add Asset</button>
+                <a href="/studio/images" class="btn-secondary" style="text-decoration:none;">Generate with AI</a>
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- Grid view -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;">
+            @foreach (var asset in _library!.Assets)
+            {
+                <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:10px;overflow:hidden;">
+                    @if (IsImage(asset))
+                    {
+                        <div style="height:140px;background:#f8f9fa;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+                            <img src="@asset.Url" alt="@asset.Name"
+                                 style="width:100%;height:100%;object-fit:cover;" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="height:100px;background:var(--hub-color)22;display:flex;align-items:center;justify-content:center;">
+                            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--hub-color)" stroke-width="1.5">
+                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                            </svg>
+                        </div>
+                    }
+                    <div style="padding:12px;">
+                        <p style="font-size:12px;font-weight:600;color:var(--color-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:4px;">
+                            @asset.Name
+                        </p>
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <span class="status-badge status-badge--muted" style="font-size:10px;">@asset.AssetType</span>
+                            @if (asset.Width.HasValue && asset.Height.HasValue)
+                            {
+                                <span style="font-size:10px;color:var(--color-muted);">@asset.Width&#215;@asset.Height</span>
+                            }
+                            else if (asset.FileSize.HasValue)
+                            {
+                                <span style="font-size:10px;color:var(--color-muted);">@FormatFileSize(asset.FileSize.Value)</span>
+                            }
+                        </div>
+                        <div style="display:flex;gap:6px;margin-top:8px;">
+                            <button class="btn-secondary" style="font-size:11px;padding:3px 8px;flex:1;"
+                                    @onclick="() => CopyUrl(asset.Url)">Copy URL</button>
+                            <a href="@asset.Url" target="_blank" rel="noopener"
+                               class="btn-secondary" style="font-size:11px;padding:3px 8px;text-decoration:none;">&#8599;</a>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- Pagination -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:24px;">
+            <span style="font-size:13px;color:var(--color-muted);">Page @_page</span>
+            <div style="display:flex;gap:8px;">
+                <button class="btn-secondary" @onclick="PrevPage" disabled="@(_page <= 1 || _loading)">&#8592; Prev</button>
+                <button class="btn-secondary" @onclick="NextPage" disabled="@((_library?.Assets.Count ?? 0) < _pageSize || _loading)">Next &#8594;</button>
+            </div>
+        </div>
+    }
+}
+
+<!-- Upload Asset Modal -->
+@if (_showUploadModal && _selectedBrand != null)
+{
+    <div class="modal-backdrop" @onclick="CloseUploadModal">
+        <div class="modal" style="max-width:520px;" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h2 class="modal-title">Add Asset</h2>
+                <button class="modal-close" @onclick="CloseUploadModal">&#x2715;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size:13px;color:var(--color-muted);margin-bottom:16px;">
+                    Register an asset URL in the library. Upload files to your preferred storage (S3, Cloudflare R2, etc.) and paste the URL here.
+                </p>
+                <div class="form-group">
+                    <label class="form-label">Name <span style="color:#ef4444;">*</span></label>
+                    <input type="text" class="form-input" @bind="_uploadName" placeholder="e.g. Hero Banner Image" />
+                </div>
+                <div class="form-group" style="margin-top:12px;">
+                    <label class="form-label">Asset URL <span style="color:#ef4444;">*</span></label>
+                    <input type="text" class="form-input" @bind="_uploadUrl" placeholder="https://…" />
+                </div>
+                <div class="form-group" style="margin-top:12px;">
+                    <label class="form-label">Asset Type</label>
+                    <select class="form-input" @bind="_uploadType">
+                        <option value="image">Image</option>
+                        <option value="document">Document</option>
+                        <option value="svg">SVG</option>
+                        <option value="font">Font</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+                    <div class="form-group">
+                        <label class="form-label">Width (px)</label>
+                        <input type="number" class="form-input" @bind="_uploadWidth" min="0" placeholder="optional" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Height (px)</label>
+                        <input type="number" class="form-input" @bind="_uploadHeight" min="0" placeholder="optional" />
+                    </div>
+                </div>
+                <div class="form-group" style="margin-top:12px;">
+                    <label class="form-label">MIME Type</label>
+                    <input type="text" class="form-input" @bind="_uploadMimeType" placeholder="e.g. image/png, application/pdf" />
+                </div>
+                @if (_modalError != null)
+                {
+                    <div class="alert-error" style="margin-top:8px;">@_modalError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" @onclick="CloseUploadModal">Cancel</button>
+                <button class="btn-hub" @onclick="SubmitUpload" disabled="@_submitting">
+                    @(_submitting ? "Adding…" : "Add Asset")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private AssetLibrary? _library;
+    private bool _loading, _submitting;
+    private string? _error, _successMsg;
+    private string _typeFilter = "all";
+    private int _page = 1, _pageSize = 48;
+
+    // Upload modal
+    private bool _showUploadModal;
+    private string? _modalError;
+    private string _uploadName = "";
+    private string _uploadUrl = "";
+    private string _uploadType = "image";
+    private int? _uploadWidth, _uploadHeight;
+    private string? _uploadMimeType;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _page = 1;
+        _error = _successMsg = null;
+        await LoadLibrary();
+    }
+
+    private async Task LoadLibrary()
+    {
+        if (_selectedBrand is null) return;
+        _loading = true;
+        _library = null;
+        try
+        {
+            var typeParam = _typeFilter == "all" ? "" : $"&assetType={_typeFilter}";
+            var url = $"api/studio/assets?brandId={_selectedBrand.Id}{typeParam}&page={_page}&pageSize={_pageSize}";
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<AssetLibrary>>(url);
+            _library = resp?.Data;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task SetTypeFilter(string t)
+    {
+        _typeFilter = t;
+        _page = 1;
+        await LoadLibrary();
+    }
+
+    private async Task PrevPage()
+    {
+        if (_page <= 1) return;
+        _page--;
+        await LoadLibrary();
+    }
+
+    private async Task NextPage()
+    {
+        _page++;
+        await LoadLibrary();
+    }
+
+    private void OpenUploadModal()
+    {
+        _uploadName = "";
+        _uploadUrl = "";
+        _uploadMimeType = null;
+        _uploadType = "image";
+        _uploadWidth = _uploadHeight = null;
+        _modalError = null;
+        _showUploadModal = true;
+    }
+
+    private void CloseUploadModal()
+    {
+        _showUploadModal = false;
+        _modalError = null;
+    }
+
+    private async Task SubmitUpload()
+    {
+        if (_selectedBrand is null) return;
+        _modalError = null;
+        if (string.IsNullOrWhiteSpace(_uploadName)) { _modalError = "Name is required."; return; }
+        if (string.IsNullOrWhiteSpace(_uploadUrl))  { _modalError = "URL is required."; return; }
+
+        _submitting = true;
+        try
+        {
+            var payload = new
+            {
+                BrandId = _selectedBrand.Id,
+                Name = _uploadName.Trim(),
+                AssetType = _uploadType,
+                Url = _uploadUrl.Trim(),
+                Width = _uploadWidth,
+                Height = _uploadHeight,
+                MimeType = string.IsNullOrWhiteSpace(_uploadMimeType) ? (string?)null : _uploadMimeType.Trim(),
+            };
+            var resp = await Http.PostAsJsonAsync("api/studio/assets", payload);
+            if (resp.IsSuccessStatusCode)
+            {
+                _successMsg = $"Asset '{_uploadName}' added to library!";
+                _showUploadModal = false;
+                await LoadLibrary();
+            }
+            else
+                _modalError = $"Failed: {await resp.Content.ReadAsStringAsync()}";
+        }
+        catch (Exception ex) { _modalError = ex.Message; }
+        finally { _submitting = false; }
+    }
+
+    private async Task CopyUrl(string url)
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", url); _successMsg = "URL copied!"; }
+        catch { /* clipboard may not be available */ }
+    }
+
+    private static bool IsImage(AssetItem a) =>
+        a.AssetType is "image" or "generated" or "svg" ||
+        (a.MimeType?.StartsWith("image/") == true);
+
+    private static string FormatFileSize(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024} KB",
+        _ => $"{bytes / (1024 * 1024)} MB",
+    };
+
+    // DTOs
+    private class BrandItem
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string PrimaryColor { get; set; } = "#ec4899";
+    }
+    private class AssetLibrary
+    {
+        public int TotalAssets { get; set; }
+        public int ImageCount { get; set; }
+        public int GeneratedCount { get; set; }
+        public List<AssetItem> Assets { get; set; } = [];
+    }
+    private class AssetItem
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string AssetType { get; set; } = "";
+        public string Url { get; set; } = "";
+        public int? Width { get; set; }
+        public int? Height { get; set; }
+        public long? FileSize { get; set; }
+        public string? MimeType { get; set; }
+        public string? PromptUsed { get; set; }
+    }
+    private record ApiWrapper<T>(bool Success, T? Data);
+}
