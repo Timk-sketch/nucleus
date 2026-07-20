@@ -1,0 +1,25 @@
+name: Health Monitor (Staging)
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'   # Every 30 minutes
+  workflow_dispatch:
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run health check
+        env:
+          NUCLEUS_STAGING_URL: ${{ secrets.NUCLEUS_STAGING_URL }}
+          SLACK_NUCLEUS_WEBHOOK: ${{ secrets.SLACK_NUCLEUS_WEBHOOK }}
+        run: node scripts/health-check.js

@@ -1,0 +1,32 @@
+name: Integration Tests (Staging)
+
+on:
+  push:
+    branches: [master]
+  schedule:
+    - cron: '0 */6 * * *'   # Every 6 hours
+  workflow_dispatch:
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      BASE_URL: ${{ secrets.NUCLEUS_STAGING_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run integration tests
+        env:
+          NUCLEUS_STAGING_URL: ${{ secrets.NUCLEUS_STAGING_URL }}
+          NUCLEUS_TEST_EMAIL: ${{ secrets.NUCLEUS_TEST_EMAIL }}
+          NUCLEUS_TEST_PASSWORD: ${{ secrets.NUCLEUS_TEST_PASSWORD }}
+          SLACK_NUCLEUS_WEBHOOK: ${{ secrets.SLACK_NUCLEUS_WEBHOOK }}
+        run: node scripts/integration-test.js
