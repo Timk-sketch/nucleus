@@ -74,6 +74,7 @@ public class NucleusDbContext(
             e.Property(t => t.StripeCustomerId).HasMaxLength(100);
             e.Property(t => t.StripeSubscriptionId).HasMaxLength(100);
             e.Property(t => t.SubscriptionStatus).HasMaxLength(50);
+            e.Property(t => t.TrialEndsAt);
             e.HasMany(t => t.Users).WithOne(u => u.Tenant).HasForeignKey(u => u.TenantId);
             e.HasMany(t => t.Brands).WithOne().HasForeignKey(b => b.TenantId);
         });

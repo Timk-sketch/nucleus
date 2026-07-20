@@ -1,0 +1,194 @@
+@page "/landing"
+@layout Nucleus.Web.Layout.LandingLayout
+
+<PageTitle>Nucleus — Your Marketing OS</PageTitle>
+
+<!-- Hero -->
+<section class="landing-hero">
+    <div class="landing-hero-inner">
+        <div class="landing-badge">Now in public beta</div>
+        <h1 class="landing-headline">
+            All your marketing<br/>in one command center
+        </h1>
+        <p class="landing-sub">
+            Content, search, authority, distribution, and design — five integrated hubs,
+            one unified platform. Built for marketing teams who move fast.
+        </p>
+        <div class="landing-hero-actions">
+            <a href="/register" class="landing-btn-primary">Start free — 14 days</a>
+            <a href="/pricing" class="landing-btn-ghost">See pricing</a>
+        </div>
+        <p class="landing-hero-note">No credit card required. Full access for 14 days.</p>
+    </div>
+</section>
+
+<!-- Hub Features -->
+<section class="landing-hubs">
+    <div class="landing-section-inner">
+        <p class="landing-eyebrow">Five hubs. One platform.</p>
+        <h2 class="landing-section-title">Everything your team needs, nothing it doesn't</h2>
+
+        <div class="hub-grid">
+            <div class="hub-card hub-card--content">
+                <div class="hub-card-icon" style="background:rgba(59,130,246,0.12);color:#3b82f6;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="16" y1="13" x2="8" y2="13"/>
+                        <line x1="16" y1="17" x2="8" y2="17"/>
+                    </svg>
+                </div>
+                <h3>Content Hub</h3>
+                <p>AI-powered content generation, keyword library, editorial calendar, and content library — all brand-aware.</p>
+                <ul>
+                    <li>AI blog writer with brand voice</li>
+                    <li>Keyword tracking &amp; clustering</li>
+                    <li>Editorial calendar</li>
+                </ul>
+            </div>
+
+            <div class="hub-card hub-card--search">
+                <div class="hub-card-icon" style="background:rgba(22,163,74,0.12);color:#16a34a;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                </div>
+                <h3>Search Hub</h3>
+                <p>Live rank tracking, SERP feature monitoring, content gap analysis, and GEO visibility for AI search engines.</p>
+                <ul>
+                    <li>Daily rank tracking</li>
+                    <li>Topic cluster mapping</li>
+                    <li>AI search (GEO) visibility</li>
+                </ul>
+            </div>
+
+            <div class="hub-card hub-card--authority">
+                <div class="hub-card-icon" style="background:rgba(139,92,246,0.12);color:#8b5cf6;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                    </svg>
+                </div>
+                <h3>Authority Hub</h3>
+                <p>Backlink monitoring, brand mention tracking, schema markup manager, and press outreach queue.</p>
+                <ul>
+                    <li>Backlink health dashboard</li>
+                    <li>Brand mentions feed</li>
+                    <li>Schema manager</li>
+                </ul>
+            </div>
+
+            <div class="hub-card hub-card--distribution">
+                <div class="hub-card-icon" style="background:rgba(245,158,11,0.12);color:#f59e0b;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="18" cy="5" r="3"/>
+                        <circle cx="6" cy="12" r="3"/>
+                        <circle cx="18" cy="19" r="3"/>
+                        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+                        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                    </svg>
+                </div>
+                <h3>Distribution Hub</h3>
+                <p>Social scheduler, email blast builder, campaign workspace, and send log — one place to push everything out.</p>
+                <ul>
+                    <li>Multi-channel social scheduling</li>
+                    <li>Email campaigns</li>
+                    <li>Full send history</li>
+                </ul>
+            </div>
+
+            <div class="hub-card hub-card--studio">
+                <div class="hub-card-icon" style="background:rgba(236,72,153,0.12);color:#ec4899;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+                        <polyline points="2 17 12 22 22 17"/>
+                        <polyline points="2 12 12 17 22 12"/>
+                    </svg>
+                </div>
+                <h3>Studio Hub</h3>
+                <p>Page builder, AI image generation, design studio, and asset library — brand assets always in sync.</p>
+                <ul>
+                    <li>No-code page builder</li>
+                    <li>AI image generation</li>
+                    <li>Shared asset library</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Pricing teaser -->
+<section class="landing-pricing-teaser">
+    <div class="landing-section-inner landing-section-inner--narrow">
+        <h2 class="landing-section-title">Simple, transparent pricing</h2>
+        <p class="landing-sub">Start free. Upgrade when you're ready.</p>
+        <a href="/pricing" class="landing-btn-primary">View pricing</a>
+    </div>
+</section>
+
+<!-- Final CTA -->
+<section class="landing-final-cta">
+    <div class="landing-section-inner landing-section-inner--narrow">
+        <h2 class="landing-headline landing-headline--sm">Ready to centralize your marketing?</h2>
+        <a href="/register" class="landing-btn-primary landing-btn-primary--lg">Get started free</a>
+        <p class="landing-hero-note">14-day free trial · No credit card required</p>
+    </div>
+</section>
+
+<style>
+    /* Landing-specific styles */
+    .landing-shell { min-height: 100vh; background: #0a0a0f; color: #e2e8f0; font-family: var(--font-sans, system-ui, sans-serif); }
+
+    /* Nav */
+    .landing-nav { display: flex; align-items: center; justify-content: space-between; padding: 20px 40px; border-bottom: 1px solid rgba(255,255,255,0.06); position: sticky; top: 0; background: rgba(10,10,15,0.9); backdrop-filter: blur(12px); z-index: 100; }
+    .landing-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; color: #f1f5f9; font-weight: 700; font-size: 16px; }
+    .landing-nav-links { display: flex; align-items: center; gap: 24px; }
+    .landing-nav-link { color: #94a3b8; text-decoration: none; font-size: 14px; font-weight: 500; transition: color 0.15s; }
+    .landing-nav-link:hover { color: #f1f5f9; }
+    .landing-cta-sm { background: #6366f1; color: white; padding: 8px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; text-decoration: none; transition: background 0.15s; }
+    .landing-cta-sm:hover { background: #4f46e5; }
+
+    /* Hero */
+    .landing-hero { padding: 100px 40px 80px; text-align: center; background: radial-gradient(ellipse at 50% 0%, rgba(99,102,241,0.15) 0%, transparent 60%); }
+    .landing-hero-inner { max-width: 680px; margin: 0 auto; }
+    .landing-badge { display: inline-block; padding: 4px 12px; background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.3); border-radius: 999px; font-size: 12px; font-weight: 600; color: #818cf8; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 24px; }
+    .landing-headline { font-size: clamp(2.4rem, 5vw, 3.8rem); font-weight: 800; line-height: 1.1; color: #f1f5f9; margin: 0 0 20px; letter-spacing: -0.03em; }
+    .landing-headline--sm { font-size: clamp(1.8rem, 3vw, 2.6rem); }
+    .landing-sub { font-size: 18px; color: #94a3b8; line-height: 1.6; margin: 0 0 36px; }
+    .landing-hero-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 16px; }
+    .landing-hero-note { font-size: 13px; color: #64748b; margin: 0; }
+    .landing-btn-primary { display: inline-flex; align-items: center; gap: 8px; background: #6366f1; color: white; padding: 12px 24px; border-radius: 10px; font-size: 15px; font-weight: 600; text-decoration: none; transition: background 0.15s, transform 0.1s; }
+    .landing-btn-primary:hover { background: #4f46e5; transform: translateY(-1px); }
+    .landing-btn-primary--lg { padding: 14px 32px; font-size: 16px; }
+    .landing-btn-ghost { display: inline-flex; align-items: center; background: transparent; color: #94a3b8; padding: 12px 24px; border-radius: 10px; font-size: 15px; font-weight: 600; text-decoration: none; border: 1px solid rgba(255,255,255,0.1); transition: border-color 0.15s, color 0.15s; }
+    .landing-btn-ghost:hover { border-color: rgba(255,255,255,0.25); color: #f1f5f9; }
+
+    /* Hubs */
+    .landing-hubs { padding: 80px 40px; background: rgba(255,255,255,0.02); }
+    .landing-section-inner { max-width: 1100px; margin: 0 auto; }
+    .landing-section-inner--narrow { max-width: 560px; text-align: center; }
+    .landing-eyebrow { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #6366f1; margin: 0 0 12px; }
+    .landing-section-title { font-size: clamp(1.6rem, 3vw, 2.2rem); font-weight: 800; color: #f1f5f9; margin: 0 0 48px; letter-spacing: -0.02em; line-height: 1.2; }
+    .hub-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+    .hub-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; padding: 28px; transition: border-color 0.2s, transform 0.2s; }
+    .hub-card:hover { border-color: rgba(255,255,255,0.14); transform: translateY(-2px); }
+    .hub-card-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
+    .hub-card h3 { font-size: 16px; font-weight: 700; color: #f1f5f9; margin: 0 0 8px; }
+    .hub-card p { font-size: 13px; color: #94a3b8; line-height: 1.6; margin: 0 0 16px; }
+    .hub-card ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+    .hub-card ul li { font-size: 12px; color: #64748b; padding-left: 14px; position: relative; }
+    .hub-card ul li::before { content: "→"; position: absolute; left: 0; color: #475569; }
+
+    /* Pricing teaser */
+    .landing-pricing-teaser { padding: 80px 40px; text-align: center; }
+    .landing-final-cta { padding: 100px 40px; text-align: center; background: radial-gradient(ellipse at 50% 100%, rgba(99,102,241,0.12) 0%, transparent 60%); }
+
+    /* Footer */
+    .landing-footer { border-top: 1px solid rgba(255,255,255,0.06); padding: 32px 40px; }
+    .landing-footer-inner { max-width: 1100px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+    .landing-footer-logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; color: #94a3b8; }
+    .landing-footer-copy { font-size: 13px; color: #475569; margin: 0; }
+    .landing-footer-links { display: flex; gap: 20px; }
+    .landing-footer-links a { font-size: 13px; color: #475569; text-decoration: none; }
+    .landing-footer-links a:hover { color: #94a3b8; }
+</style>

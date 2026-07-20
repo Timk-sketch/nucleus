@@ -1,6 +1,12 @@
 @page "/"
 @inject NavigationManager Nav
+@inject JwtAuthStateProvider AuthState
 
 @code {
-    protected override void OnInitialized() => Nav.NavigateTo("/dashboard", replace: true);
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        var isAuth = state.User.Identity?.IsAuthenticated == true;
+        Nav.NavigateTo(isAuth ? "/dashboard" : "/landing", replace: true);
+    }
 }

@@ -1,0 +1,40 @@
+@inherits LayoutComponentBase
+
+<div class="landing-shell">
+    <nav class="landing-nav">
+        <a href="/" class="landing-logo">
+            <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
+                <rect width="32" height="32" rx="8" fill="#6366f1"/>
+                <path d="M8 16L14 10L20 16L14 22L8 16Z" fill="white" opacity="0.9"/>
+                <path d="M14 16L20 10L26 16L20 22L14 16Z" fill="white" opacity="0.6"/>
+            </svg>
+            <span>Nucleus</span>
+        </a>
+        <div class="landing-nav-links">
+            <a href="/pricing" class="landing-nav-link">Pricing</a>
+            <a href="/login" class="landing-nav-link">Sign in</a>
+            <a href="/register" class="landing-cta-sm">Get started free</a>
+        </div>
+    </nav>
+
+    <main>@Body</main>
+
+    <footer class="landing-footer">
+        <div class="landing-footer-inner">
+            <div class="landing-footer-logo">
+                <svg width="20" height="20" viewBox="0 0 32 32" fill="none">
+                    <rect width="32" height="32" rx="8" fill="#6366f1"/>
+                    <path d="M8 16L14 10L20 16L14 22L8 16Z" fill="white" opacity="0.9"/>
+                    <path d="M14 16L20 10L26 16L20 22L14 16Z" fill="white" opacity="0.6"/>
+                </svg>
+                <span>Nucleus</span>
+            </div>
+            <p class="landing-footer-copy">© @DateTime.UtcNow.Year Nucleus. All rights reserved.</p>
+            <div class="landing-footer-links">
+                <a href="/pricing">Pricing</a>
+                <a href="/login">Sign in</a>
+                <a href="/register">Register</a>
+            </div>
+        </div>
+    </footer>
+</div>

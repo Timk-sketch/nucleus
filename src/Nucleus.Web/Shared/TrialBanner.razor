@@ -1,0 +1,56 @@
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+@if (_showBanner)
+{
+    <div class="trial-banner">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        @if (_daysLeft <= 0)
+        {
+            <span>Your free trial has ended.</span>
+        }
+        else
+        {
+            <span>@_daysLeft day@(_daysLeft == 1 ? "" : "s") left in your free trial.</span>
+        }
+        <button class="trial-banner-cta" @onclick='() => Nav.NavigateTo("/billing")'>Upgrade now</button>
+        <button class="trial-banner-dismiss" @onclick="Dismiss">×</button>
+    </div>
+}
+
+<style>
+    .trial-banner { display: flex; align-items: center; gap: 10px; background: rgba(245,158,11,0.1); border-bottom: 1px solid rgba(245,158,11,0.25); padding: 10px 20px; font-size: 13px; color: #fbbf24; }
+    .trial-banner svg { flex-shrink: 0; color: #f59e0b; }
+    .trial-banner-cta { margin-left: 4px; background: #f59e0b; color: #0a0a0f; padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; border: none; cursor: pointer; transition: background 0.15s; }
+    .trial-banner-cta:hover { background: #d97706; }
+    .trial-banner-dismiss { margin-left: auto; background: transparent; border: none; color: #92400e; cursor: pointer; font-size: 18px; line-height: 1; padding: 0 4px; }
+    .trial-banner-dismiss:hover { color: #fbbf24; }
+</style>
+
+@code {
+    private bool _showBanner;
+    private int _daysLeft;
+    private bool _dismissed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var res = await Http.GetFromJsonAsync<TenantInfo>("api/v1/billing/status");
+            if (res?.SubscriptionStatus == "trialing" && res.TrialEndsAt.HasValue)
+            {
+                _daysLeft = (int)Math.Ceiling((res.TrialEndsAt.Value - DateTimeOffset.UtcNow).TotalDays);
+                _showBanner = !_dismissed && _daysLeft <= 7;
+            }
+        }
+        catch { /* unauthenticated or network error — silent */ }
+    }
+
+    private void Dismiss() { _dismissed = true; _showBanner = false; }
+
+    private record TenantInfo(string? SubscriptionStatus, DateTimeOffset? TrialEndsAt);
+}

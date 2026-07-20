@@ -1,0 +1,205 @@
+@page "/pricing"
+@layout Nucleus.Web.Layout.LandingLayout
+@inject NavigationManager Nav
+@inject HttpClient Http
+
+<PageTitle>Pricing — Nucleus</PageTitle>
+
+<div class="pricing-page">
+    <div class="pricing-header">
+        <p class="landing-eyebrow">Pricing</p>
+        <h1 class="landing-headline">Start free. Scale when ready.</h1>
+        <p class="landing-sub">All plans include a 14-day free trial. No credit card required.</p>
+    </div>
+
+    <div class="pricing-cards">
+        <!-- Starter -->
+        <div class="pricing-card">
+            <div class="pricing-card-header">
+                <div class="pricing-tier">Starter</div>
+                <div class="pricing-price"><span class="pricing-amount">Free</span></div>
+                <p class="pricing-desc">For individuals and small teams getting started.</p>
+            </div>
+            <ul class="pricing-features">
+                <li>1 brand</li>
+                <li>Content Hub — 10 AI generations/month</li>
+                <li>Search Hub — 50 keywords tracked</li>
+                <li>Distribution Hub — 30 posts/month</li>
+                <li>Studio Hub — 5 image generations/month</li>
+                <li>1 team member</li>
+            </ul>
+            <a href="/register" class="pricing-cta pricing-cta--ghost">Get started free</a>
+        </div>
+
+        <!-- Pro — highlighted -->
+        <div class="pricing-card pricing-card--featured">
+            <div class="pricing-popular">Most popular</div>
+            <div class="pricing-card-header">
+                <div class="pricing-tier">Pro</div>
+                <div class="pricing-price">
+                    <span class="pricing-amount">$149</span>
+                    <span class="pricing-period">/month</span>
+                </div>
+                <p class="pricing-desc">For growing teams who need full platform access.</p>
+            </div>
+            <ul class="pricing-features">
+                <li>5 brands</li>
+                <li>Unlimited AI content generations</li>
+                <li>Search Hub — 500 keywords tracked</li>
+                <li>Unlimited social posts</li>
+                <li>Authority Hub — backlinks + mentions</li>
+                <li>Studio Hub — unlimited image gen</li>
+                <li>5 team members</li>
+                <li>Priority support</li>
+            </ul>
+            <button class="pricing-cta pricing-cta--primary" @onclick="StartProCheckout">
+                @if (_loading) { <span class="pricing-spinner"></span> } else { <span>Start Pro trial</span> }
+            </button>
+        </div>
+
+        <!-- Agency -->
+        <div class="pricing-card">
+            <div class="pricing-card-header">
+                <div class="pricing-tier">Agency</div>
+                <div class="pricing-price">
+                    <span class="pricing-amount">$449</span>
+                    <span class="pricing-period">/month</span>
+                </div>
+                <p class="pricing-desc">For agencies managing multiple client brands.</p>
+            </div>
+            <ul class="pricing-features">
+                <li>Unlimited brands</li>
+                <li>Unlimited AI generations</li>
+                <li>Unlimited keywords</li>
+                <li>All Pro features</li>
+                <li>White-label reports</li>
+                <li>Unlimited team members</li>
+                <li>Dedicated account manager</li>
+                <li>Custom onboarding</li>
+            </ul>
+            <button class="pricing-cta pricing-cta--ghost" @onclick="StartAgencyCheckout">
+                @if (_loadingAgency) { <span class="pricing-spinner"></span> } else { <span>Start Agency trial</span> }
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <p class="pricing-error">@_error</p>
+    }
+
+    <div class="pricing-faq">
+        <h2>Common questions</h2>
+        <div class="faq-grid">
+            <div class="faq-item">
+                <h3>Do I need a credit card to start?</h3>
+                <p>No. Your 14-day trial is completely free, no card required. You'll only be asked for payment when upgrading to a paid plan.</p>
+            </div>
+            <div class="faq-item">
+                <h3>Can I switch plans later?</h3>
+                <p>Yes. You can upgrade or downgrade at any time. Upgrades take effect immediately; downgrades apply at the next billing cycle.</p>
+            </div>
+            <div class="faq-item">
+                <h3>What happens when my trial ends?</h3>
+                <p>You'll be prompted to choose a plan. If you don't upgrade, your account moves to the Starter (free) tier automatically — no data is lost.</p>
+            </div>
+            <div class="faq-item">
+                <h3>Can I cancel anytime?</h3>
+                <p>Yes, cancel from your billing settings at any time. No questions asked, no cancellation fees.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .pricing-page { max-width: 1060px; margin: 0 auto; padding: 80px 40px 100px; }
+    .pricing-header { text-align: center; margin-bottom: 60px; }
+    .pricing-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-bottom: 80px; }
+    .pricing-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 32px; display: flex; flex-direction: column; position: relative; }
+    .pricing-card--featured { background: rgba(99,102,241,0.08); border-color: rgba(99,102,241,0.4); }
+    .pricing-popular { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: #6366f1; color: white; padding: 4px 14px; border-radius: 999px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
+    .pricing-card-header { margin-bottom: 24px; }
+    .pricing-tier { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #94a3b8; margin-bottom: 8px; }
+    .pricing-price { display: flex; align-items: baseline; gap: 4px; margin-bottom: 10px; }
+    .pricing-amount { font-size: 36px; font-weight: 800; color: #f1f5f9; letter-spacing: -0.03em; }
+    .pricing-period { font-size: 14px; color: #64748b; }
+    .pricing-desc { font-size: 13px; color: #94a3b8; line-height: 1.5; margin: 0; }
+    .pricing-features { list-style: none; padding: 0; margin: 0 0 28px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+    .pricing-features li { font-size: 13px; color: #94a3b8; padding-left: 18px; position: relative; }
+    .pricing-features li::before { content: "✓"; position: absolute; left: 0; color: #22c55e; font-weight: 700; font-size: 11px; top: 1px; }
+    .pricing-cta { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 24px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; text-decoration: none; transition: all 0.15s; }
+    .pricing-cta--primary { background: #6366f1; color: white; }
+    .pricing-cta--primary:hover { background: #4f46e5; }
+    .pricing-cta--ghost { background: transparent; color: #94a3b8; border: 1px solid rgba(255,255,255,0.12); }
+    .pricing-cta--ghost:hover { border-color: rgba(255,255,255,0.25); color: #f1f5f9; }
+    .pricing-spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.6s linear infinite; display: inline-block; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+    .pricing-error { text-align: center; color: #f87171; font-size: 14px; margin-top: -40px; margin-bottom: 40px; }
+    .pricing-faq { border-top: 1px solid rgba(255,255,255,0.06); padding-top: 60px; }
+    .pricing-faq h2 { font-size: 22px; font-weight: 700; color: #f1f5f9; margin: 0 0 32px; text-align: center; }
+    .faq-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; }
+    .faq-item h3 { font-size: 14px; font-weight: 600; color: #e2e8f0; margin: 0 0 8px; }
+    .faq-item p { font-size: 13px; color: #64748b; line-height: 1.6; margin: 0; }
+
+    /* Reuse landing styles */
+    .landing-eyebrow { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #6366f1; margin: 0 0 12px; }
+    .landing-headline { font-size: clamp(2rem, 4vw, 3rem); font-weight: 800; line-height: 1.1; color: #f1f5f9; margin: 0 0 16px; letter-spacing: -0.03em; }
+    .landing-sub { font-size: 17px; color: #94a3b8; line-height: 1.6; margin: 0; }
+</style>
+
+@code {
+    private bool _loading;
+    private bool _loadingAgency;
+    private string? _error;
+
+    private async Task StartProCheckout()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            var res = await Http.PostAsJsonAsync("api/v1/billing/create-checkout", new { plan = "pro" });
+            if (res.IsSuccessStatusCode)
+            {
+                var data = await res.Content.ReadFromJsonAsync<CheckoutResponse>();
+                if (data?.Url != null) Nav.NavigateTo(data.Url, forceLoad: true);
+            }
+            else
+            {
+                // Not authenticated — go to register with plan hint
+                Nav.NavigateTo("/register?plan=pro");
+            }
+        }
+        catch
+        {
+            Nav.NavigateTo("/register?plan=pro");
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task StartAgencyCheckout()
+    {
+        _loadingAgency = true;
+        _error = null;
+        try
+        {
+            var res = await Http.PostAsJsonAsync("api/v1/billing/create-checkout", new { plan = "agency" });
+            if (res.IsSuccessStatusCode)
+            {
+                var data = await res.Content.ReadFromJsonAsync<CheckoutResponse>();
+                if (data?.Url != null) Nav.NavigateTo(data.Url, forceLoad: true);
+            }
+            else
+            {
+                Nav.NavigateTo("/register?plan=agency");
+            }
+        }
+        catch
+        {
+            Nav.NavigateTo("/register?plan=agency");
+        }
+        finally { _loadingAgency = false; }
+    }
+
+    private record CheckoutResponse(string? Url);
+}

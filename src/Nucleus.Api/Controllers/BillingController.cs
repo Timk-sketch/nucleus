@@ -24,6 +24,17 @@ public class BillingController(
 {
     private static string SubCacheKey(Guid tenantId) => $"subscription:{tenantId}";
 
+    // GET /api/v1/billing/status — lightweight check for trial banner
+    [HttpGet("status")]
+    [Authorize]
+    public async Task<IActionResult> GetStatus(CancellationToken ct)
+    {
+        var tenantId = tenantService.TenantId;
+        var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == tenantId, ct);
+        if (tenant is null) return NotFound(ApiResponse.Fail("Tenant not found."));
+        return Ok(ApiResponse.Ok(new { tenant.SubscriptionStatus, tenant.TrialEndsAt }));
+    }
+
     // GET /api/v1/billing/subscription
     [HttpGet("subscription")]
     public async Task<IActionResult> GetSubscription(CancellationToken ct)

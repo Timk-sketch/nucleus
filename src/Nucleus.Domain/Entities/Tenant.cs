@@ -11,6 +11,7 @@ public class Tenant
     public string? SubscriptionStatus { get; set; } // active | trialing | past_due | canceled
     public bool IsActive { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? TrialEndsAt { get; set; }
 
     public ICollection<ApplicationUser> Users { get; set; } = [];
     public ICollection<Brand> Brands { get; set; } = [];

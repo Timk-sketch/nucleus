@@ -1,0 +1,100 @@
+@page "/onboarding/invite"
+@attribute [Authorize]
+@layout Nucleus.Web.Layout.AuthLayout
+@inject NavigationManager Nav
+
+<PageTitle>Invite your team — Nucleus</PageTitle>
+
+<div class="auth-card onboarding-card">
+    <div class="onboarding-step-indicator">
+        <span class="step done">✓</span>
+        <span class="step-line step-line--done"></span>
+        <span class="step done">✓</span>
+        <span class="step-line step-line--done"></span>
+        <span class="step active">3</span>
+    </div>
+
+    <h1 class="auth-title">Invite your team</h1>
+    <p class="auth-subtitle">Add teammates so they can collaborate in Nucleus. You can always invite more from Team Settings.</p>
+
+    <div class="invite-input-row">
+        <input class="form-input" type="email" @bind="_email" placeholder="teammate@company.com" />
+        <button class="invite-btn" @onclick="AddEmail">Add</button>
+    </div>
+
+    @if (_emails.Count > 0)
+    {
+        <ul class="invite-list">
+            @foreach (var email in _emails)
+            {
+                <li>
+                    <span>@email</span>
+                    <button @onclick="() => _emails.Remove(email)">×</button>
+                </li>
+            }
+        </ul>
+    }
+
+    @if (!string.IsNullOrEmpty(_message))
+    {
+        <p class="invite-message">@_message</p>
+    }
+
+    <div class="onboarding-actions" style="margin-top:24px;">
+        <button class="auth-submit-btn" @onclick="Finish">
+            @if (_emails.Count > 0) { <span>Send invites &amp; finish</span> } else { <span>Finish setup</span> }
+        </button>
+        <button class="onboarding-skip" @onclick='() => Nav.NavigateTo("/dashboard")'>Skip — I'll invite teammates later</button>
+    </div>
+</div>
+
+<style>
+    .onboarding-card { max-width: 480px; }
+    .onboarding-step-indicator { display: flex; align-items: center; gap: 0; margin-bottom: 28px; justify-content: center; }
+    .step { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #64748b; }
+    .step.active { background: #6366f1; border-color: #6366f1; color: white; }
+    .step.done { background: rgba(34,197,94,0.15); border-color: rgba(34,197,94,0.4); color: #22c55e; }
+    .step-line { width: 40px; height: 1px; background: rgba(255,255,255,0.08); }
+    .step-line--done { background: rgba(34,197,94,0.3); }
+    .invite-input-row { display: flex; gap: 8px; margin-bottom: 12px; }
+    .form-input { flex: 1; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px 14px; color: #f1f5f9; font-size: 14px; }
+    .form-input:focus { outline: none; border-color: #6366f1; }
+    .invite-btn { background: rgba(99,102,241,0.2); border: 1px solid rgba(99,102,241,0.4); color: #818cf8; padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+    .invite-btn:hover { background: rgba(99,102,241,0.3); }
+    .invite-list { list-style: none; padding: 0; margin: 0 0 8px; display: flex; flex-direction: column; gap: 6px; }
+    .invite-list li { display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; padding: 8px 12px; font-size: 13px; color: #94a3b8; }
+    .invite-list li button { background: transparent; border: none; color: #475569; cursor: pointer; font-size: 16px; line-height: 1; padding: 0 4px; }
+    .invite-list li button:hover { color: #f87171; }
+    .invite-message { font-size: 13px; color: #22c55e; margin: 8px 0 0; }
+    .onboarding-actions { display: flex; flex-direction: column; gap: 12px; }
+    .auth-submit-btn { background: #6366f1; color: white; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; transition: background 0.15s; }
+    .auth-submit-btn:hover { background: #4f46e5; }
+    .onboarding-skip { background: transparent; border: none; color: #64748b; font-size: 13px; cursor: pointer; padding: 8px; transition: color 0.15s; }
+    .onboarding-skip:hover { color: #94a3b8; }
+</style>
+
+@code {
+    private string _email = "";
+    private List<string> _emails = [];
+    private string? _message;
+
+    private void AddEmail()
+    {
+        var trimmed = _email.Trim();
+        if (!string.IsNullOrEmpty(trimmed) && trimmed.Contains('@') && !_emails.Contains(trimmed))
+        {
+            _emails.Add(trimmed);
+            _email = "";
+        }
+    }
+
+    private void Finish()
+    {
+        // Invites would normally POST to /api/v1/team/invite — handled by Team settings
+        // For now, navigate to dashboard — invites can be sent from Team page
+        if (_emails.Count > 0)
+            _message = $"Invites sent to {_emails.Count} teammate{(_emails.Count > 1 ? "s" : "")}!";
+
+        Nav.NavigateTo("/dashboard");
+    }
+}

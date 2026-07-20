@@ -35,6 +35,8 @@ public class AuthController(
             Name = req.CompanyName,
             Slug = req.CompanyName.ToLowerInvariant().Replace(" ", "-"),
             Plan = "starter",
+            SubscriptionStatus = "trialing",
+            TrialEndsAt = DateTimeOffset.UtcNow.AddDays(14),
         };
         db.Tenants.Add(tenant);
         await db.SaveChangesAsync();

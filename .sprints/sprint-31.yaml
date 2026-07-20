@@ -1,0 +1,37 @@
+sprint: 31
+name: Product Launch Prep
+status: in_progress
+
+description: |
+  Everything needed to open Nucleus to real customers:
+  1. Public landing page (/) — replaces the redirect-to-dashboard with a real marketing page
+  2. Pricing page (/pricing) — 3 tiers (Starter/Pro/Agency) with Stripe checkout links
+  3. Guided onboarding wizard (/onboarding) — 3-step post-signup flow
+  4. Trial system — TrialEndsAt on Tenant, banner in shell when < 7 days left
+  5. Migration — adds trial_ends_at to tenants table
+
+new_files:
+  - src/Nucleus.Web/Pages/Landing.razor          — public homepage with hero + hub sections + pricing CTA
+  - src/Nucleus.Web/Pages/Pricing.razor           — /pricing — 3-tier pricing cards + Stripe checkout
+  - src/Nucleus.Web/Pages/Onboarding/Welcome.razor     — step 1: name your company
+  - src/Nucleus.Web/Pages/Onboarding/ConnectTools.razor — step 2: connect WP/GHL (skippable)
+  - src/Nucleus.Web/Pages/Onboarding/InviteTeam.razor  — step 3: invite a teammate (skippable)
+  - src/Nucleus.Web/Layout/LandingLayout.razor    — no-sidebar layout for public pages
+  - src/Nucleus.Web/Shared/TrialBanner.razor      — banner shown in ShellLayout when trial < 7 days left
+  - database/migrations/AddTrialEndsAt.cs         — EF Core migration
+
+modified_files:
+  - src/Nucleus.Web/Pages/Home.razor              — auth-aware: authenticated → /dashboard, else → /landing
+  - src/Nucleus.Domain/Entities/Tenant.cs         — add TrialEndsAt (DateTimeOffset?)
+  - src/Nucleus.Infrastructure/*/NucleusDbContext  — TrialEndsAt EF config
+  - src/Nucleus.Web/Layout/ShellLayout.razor       — include <TrialBanner /> above page content
+  - src/Nucleus.Api/Auth/RegisterCommandHandler.cs — set TrialEndsAt = now + 14 days on register
+
+acceptance_criteria:
+  - GET / shows landing page for unauthenticated users; redirects authenticated to /dashboard
+  - GET /pricing renders 3 pricing cards; Starter CTA goes to /register, Pro/Agency CTA opens Stripe checkout
+  - GET /onboarding/welcome available post-login; 3 steps with skip option; step 3 completes → /dashboard
+  - Tenant.TrialEndsAt set to UtcNow+14 on new registration
+  - TrialBanner appears in ShellLayout when SubscriptionStatus == "trialing" and TrialEndsAt < UtcNow + 7 days
+  - dotnet build → 0 errors, 0 warnings
+  - dotnet test → all pass

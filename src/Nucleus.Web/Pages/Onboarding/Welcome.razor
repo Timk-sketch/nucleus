@@ -1,0 +1,49 @@
+@page "/onboarding/welcome"
+@attribute [Authorize]
+@layout Nucleus.Web.Layout.AuthLayout
+@inject NavigationManager Nav
+
+<PageTitle>Welcome to Nucleus</PageTitle>
+
+<div class="auth-card onboarding-card">
+    <div class="onboarding-step-indicator">
+        <span class="step active">1</span>
+        <span class="step-line"></span>
+        <span class="step">2</span>
+        <span class="step-line"></span>
+        <span class="step">3</span>
+    </div>
+
+    <h1 class="auth-title">Welcome to Nucleus 👋</h1>
+    <p class="auth-subtitle">Let's get you set up. First, add your first brand so you have a workspace ready to go.</p>
+
+    <div class="onboarding-tip">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        A brand is one business identity — one website, one set of social accounts. You can add more brands later.
+    </div>
+
+    <div class="onboarding-actions">
+        <a href="/new-brand" class="auth-submit">Add your first brand</a>
+        <button class="onboarding-skip" @onclick='() => Nav.NavigateTo("/onboarding/connect")'>
+            Skip for now — I'll add a brand later
+        </button>
+    </div>
+</div>
+
+<style>
+    .onboarding-card { max-width: 480px; }
+    .onboarding-step-indicator { display: flex; align-items: center; gap: 0; margin-bottom: 28px; justify-content: center; }
+    .step { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #64748b; }
+    .step.active { background: #6366f1; border-color: #6366f1; color: white; }
+    .step-line { width: 40px; height: 1px; background: rgba(255,255,255,0.08); }
+    .onboarding-tip { background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2); border-radius: 8px; padding: 12px 14px; font-size: 13px; color: #94a3b8; display: flex; gap: 10px; align-items: flex-start; margin-bottom: 24px; line-height: 1.5; }
+    .onboarding-actions { display: flex; flex-direction: column; gap: 12px; }
+    .auth-submit { display: flex; align-items: center; justify-content: center; background: #6366f1; color: white; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 600; text-decoration: none; transition: background 0.15s; }
+    .auth-submit:hover { background: #4f46e5; }
+    .onboarding-skip { background: transparent; border: none; color: #64748b; font-size: 13px; cursor: pointer; padding: 8px; transition: color 0.15s; }
+    .onboarding-skip:hover { color: #94a3b8; }
+</style>

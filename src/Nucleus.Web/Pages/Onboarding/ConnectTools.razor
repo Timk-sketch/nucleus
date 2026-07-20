@@ -1,0 +1,87 @@
+@page "/onboarding/connect"
+@attribute [Authorize]
+@layout Nucleus.Web.Layout.AuthLayout
+@inject NavigationManager Nav
+
+<PageTitle>Connect your tools — Nucleus</PageTitle>
+
+<div class="auth-card onboarding-card">
+    <div class="onboarding-step-indicator">
+        <span class="step done">✓</span>
+        <span class="step-line step-line--done"></span>
+        <span class="step active">2</span>
+        <span class="step-line"></span>
+        <span class="step">3</span>
+    </div>
+
+    <h1 class="auth-title">Connect your tools</h1>
+    <p class="auth-subtitle">Nucleus connects to your existing stack. You can connect tools from Brand Settings at any time.</p>
+
+    <div class="connect-tools">
+        <div class="connect-tool">
+            <div class="connect-tool-icon" style="background:#21759b22;color:#21759b;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+                </svg>
+            </div>
+            <div>
+                <div class="connect-tool-name">WordPress</div>
+                <div class="connect-tool-desc">Sync and publish blog content directly to your site</div>
+            </div>
+            <a href="/settings" class="connect-tool-btn">Connect</a>
+        </div>
+
+        <div class="connect-tool">
+            <div class="connect-tool-icon" style="background:#f5a62322;color:#f5a623;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+            </div>
+            <div>
+                <div class="connect-tool-name">GoHighLevel (GHL)</div>
+                <div class="connect-tool-desc">Sync contacts, conversations, and pipeline data</div>
+            </div>
+            <a href="/settings" class="connect-tool-btn">Connect</a>
+        </div>
+
+        <div class="connect-tool">
+            <div class="connect-tool-icon" style="background:#4267B222;color:#4267B2;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>
+                </svg>
+            </div>
+            <div>
+                <div class="connect-tool-name">Meta Ads</div>
+                <div class="connect-tool-desc">Pull ad performance data into your reports</div>
+            </div>
+            <a href="/settings" class="connect-tool-btn">Connect</a>
+        </div>
+    </div>
+
+    <div class="onboarding-actions" style="margin-top:24px;">
+        <button class="auth-submit-btn" @onclick='() => Nav.NavigateTo("/onboarding/invite")'>Continue</button>
+        <button class="onboarding-skip" @onclick='() => Nav.NavigateTo("/onboarding/invite")'>Skip — I'll connect tools later</button>
+    </div>
+</div>
+
+<style>
+    .onboarding-card { max-width: 480px; }
+    .onboarding-step-indicator { display: flex; align-items: center; gap: 0; margin-bottom: 28px; justify-content: center; }
+    .step { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #64748b; }
+    .step.active { background: #6366f1; border-color: #6366f1; color: white; }
+    .step.done { background: rgba(34,197,94,0.15); border-color: rgba(34,197,94,0.4); color: #22c55e; }
+    .step-line { width: 40px; height: 1px; background: rgba(255,255,255,0.08); }
+    .step-line--done { background: rgba(34,197,94,0.3); }
+    .connect-tools { display: flex; flex-direction: column; gap: 12px; }
+    .connect-tool { display: flex; align-items: center; gap: 14px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; padding: 14px; }
+    .connect-tool-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .connect-tool-name { font-size: 13px; font-weight: 600; color: #e2e8f0; margin-bottom: 2px; }
+    .connect-tool-desc { font-size: 12px; color: #64748b; }
+    .connect-tool-btn { margin-left: auto; flex-shrink: 0; background: transparent; border: 1px solid rgba(255,255,255,0.12); color: #94a3b8; padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: none; transition: all 0.15s; }
+    .connect-tool-btn:hover { border-color: rgba(255,255,255,0.25); color: #f1f5f9; }
+    .onboarding-actions { display: flex; flex-direction: column; gap: 12px; }
+    .auth-submit-btn { background: #6366f1; color: white; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; transition: background 0.15s; }
+    .auth-submit-btn:hover { background: #4f46e5; }
+    .onboarding-skip { background: transparent; border: none; color: #64748b; font-size: 13px; cursor: pointer; padding: 8px; transition: color 0.15s; }
+    .onboarding-skip:hover { color: #94a3b8; }
+</style>
