@@ -35,9 +35,9 @@ public class HealthController(IConfiguration config) : ControllerBase
             await cmd.ExecuteScalarAsync(cts.Token);
             dbStatus = "connected";
         }
-        catch
+        catch (Exception ex)
         {
-            dbStatus = "unreachable";
+            dbStatus = $"unreachable: {ex.GetType().Name}: {ex.Message}";
         }
         // Always return 200 — Railway healthcheck only cares that the app is alive.
         return Ok(new { status = "ok", db = dbStatus, timestamp = DateTimeOffset.UtcNow });
