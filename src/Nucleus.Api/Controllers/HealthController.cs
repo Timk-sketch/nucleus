@@ -49,6 +49,6 @@ public class HealthController(IConfiguration config) : ControllerBase
             dbStatus = $"unreachable: {ex.GetType().Name}: {ex.Message}";
         }
         // Always return 200 — Railway healthcheck only cares that the app is alive.
-        return Ok(new { status = "ok", db = dbStatus, v = "diag2", timestamp = DateTimeOffset.UtcNow });
+        return Ok(new { status = "ok", db = dbStatus, timestamp = DateTimeOffset.UtcNow });
     }
 }
