@@ -24,6 +24,15 @@ public class HealthController(IConfiguration config) : ControllerBase
                 ?? config["NUCLEUS_DB_CONNECTION"]
                 ?? config["DATABASE_URL"]
                 ?? "";
+            // Convert postgres:// URI to Npgsql key=value format (same as Program.cs)
+            if (rawConn.StartsWith("postgres", StringComparison.OrdinalIgnoreCase))
+            {
+                var u = new Uri(rawConn.Trim());
+                var colonIdx = u.UserInfo.IndexOf(':');
+                var user = Uri.UnescapeDataString(colonIdx >= 0 ? u.UserInfo[..colonIdx] : u.UserInfo);
+                var pass = colonIdx >= 0 ? Uri.UnescapeDataString(u.UserInfo[(colonIdx + 1)..]) : "";
+                rawConn = $"Host={u.Host};Port={u.Port};Database={u.AbsolutePath.TrimStart('/')};Username={user};Password={pass}";
+            }
             var csb = new NpgsqlConnectionStringBuilder(rawConn)
             {
                 Timeout = 3, // Npgsql 9: connection timeout in seconds
