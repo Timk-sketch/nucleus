@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Autonomous Claude API worker for Nucleus sprint builds",
   "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "sprint": "node run-sprint.js",
     "security": "node ../maintenance/security-sweep.js",

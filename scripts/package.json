@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Shared dependency root for scripts/ automation. Node resolves bare imports by walking UP from the importing file, so deps must live here (an ancestor of both maintenance/ and worker/) rather than in a sibling folder.",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "security": "node maintenance/security-sweep.js",
     "perf": "node maintenance/perf-audit.js",
