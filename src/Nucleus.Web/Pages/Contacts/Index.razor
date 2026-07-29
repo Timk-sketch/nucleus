@@ -1,0 +1,210 @@
+@page "/contacts"
+@attribute [Authorize]
+@layout ContactsLayout
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<PageTitle>Contacts — Contacts Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">All Contacts</h1>
+        <p class="page-subtitle">GHL contacts synced per brand. Click a contact to view details and related leads.</p>
+    </div>
+</div>
+
+<div class="brand-pill-row">
+    @foreach (var b in _brands)
+    {
+        <button class="brand-pill-btn @(_selected?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                @onclick="() => SelectBrand(b)">
+            <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+            @b.Name
+        </button>
+    }
+</div>
+
+@if (_selected != null)
+{
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+        <input @bind="_search" @bind:event="oninput" @onkeyup="OnSearchKey"
+               class="form-input" placeholder="Search name or email…" style="flex:1;" />
+        <button @onclick="Search" class="btn-secondary" style="white-space:nowrap;">Search</button>
+        <button @onclick="TriggerSync" disabled="@_syncing" class="btn-hub" style="white-space:nowrap;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="23 4 23 10 17 10"/>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
+            @(_syncing ? "Queued…" : "Sync GHL")
+        </button>
+    </div>
+
+    @if (!_ghlConfigured)
+    {
+        <div class="alert-warning" style="margin-bottom:16px;">
+            GHL is not configured for this brand. Add a GHL Location ID and API Key in brand settings.
+        </div>
+    }
+
+    @if (_loading)
+    {
+        <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+    }
+    else if (_contacts.Count == 0)
+    {
+        <div class="empty-state">No contacts yet. Click <strong>Sync GHL</strong> to pull contacts from GoHighLevel.</div>
+    }
+    else
+    {
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <span style="font-size:13px;color:var(--color-muted);">@_total contacts total</span>
+            <span style="font-size:13px;color:var(--color-muted);">Page @_page</span>
+        </div>
+
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Phone</th>
+                        <th>Tags</th>
+                        <th>Added</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in _contacts)
+                    {
+                        var fullName = ((c.FirstName ?? "") + " " + (c.LastName ?? "")).Trim();
+                        <tr style="cursor:pointer;" @onclick="() => OpenDetail(c)">
+                            <td style="font-weight:600;">
+                                @if (string.IsNullOrEmpty(fullName)) { <span style="color:var(--color-muted);">—</span> }
+                                else { <span style="color:var(--hub-color);">@fullName</span> }
+                            </td>
+                            <td style="font-size:13px;">
+                                @if (c.Email != null)
+                                { <a href="mailto:@c.Email" @onclick:stopPropagation="true" style="color:var(--color-muted);">@c.Email</a> }
+                                else { <span style="color:var(--color-muted);">—</span> }
+                            </td>
+                            <td style="font-size:13px;color:var(--color-muted);">@(c.Phone ?? "—")</td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(c.Tags) && c.Tags != "[]")
+                                {
+                                    @foreach (var tag in ParseTags(c.Tags))
+                                    {
+                                        <span style="display:inline-block;padding:2px 8px;border-radius:999px;background:rgba(249,115,22,0.1);color:#f97316;font-size:11px;font-weight:600;margin-right:4px;">@tag</span>
+                                    }
+                                }
+                                else { <span style="color:var(--color-muted);font-size:12px;">—</span> }
+                            </td>
+                            <td style="font-size:12px;color:var(--color-muted);">
+                                @(c.GhlCreatedAt.HasValue ? c.GhlCreatedAt.Value.ToString("MMM d, yyyy") : "—")
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (_total > 50)
+        {
+            <div style="display:flex;gap:8px;margin-top:12px;justify-content:center;">
+                @if (_page > 1) { <button @onclick="PrevPage" class="btn-secondary">← Prev</button> }
+                @if (_contacts.Count == 50) { <button @onclick="NextPage" class="btn-secondary">Next →</button> }
+            </div>
+        }
+    }
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selected;
+    private List<ContactItem> _contacts = [];
+    private int _total;
+    private int _page = 1;
+    private string _search = "";
+    private bool _loading;
+    private bool _syncing;
+    private bool _ghlConfigured = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem b)
+    {
+        _selected = b; _page = 1; _search = "";
+        await LoadContacts();
+    }
+
+    private async Task LoadContacts()
+    {
+        if (_selected is null) return;
+        _loading = true;
+        try
+        {
+            var url = $"api/v1/brands/{_selected.Id}/contacts?page={_page}";
+            if (!string.IsNullOrWhiteSpace(_search)) url += $"&search={Uri.EscapeDataString(_search)}";
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<ContactsData>>(url);
+            _contacts = resp?.Data?.Contacts ?? [];
+            _total = resp?.Data?.Total ?? 0;
+            _ghlConfigured = resp?.Data?.GhlConfigured ?? true;
+        }
+        catch { _contacts = []; }
+        finally { _loading = false; }
+    }
+
+    private async Task Search() { _page = 1; await LoadContacts(); }
+    private async Task OnSearchKey(KeyboardEventArgs e) { if (e.Key == "Enter") await Search(); }
+    private async Task NextPage() { _page++; await LoadContacts(); }
+    private async Task PrevPage() { if (_page > 1) { _page--; await LoadContacts(); } }
+
+    private async Task TriggerSync()
+    {
+        if (_selected is null) return;
+        _syncing = true;
+        try { await Http.PostAsync($"api/v1/brands/{_selected.Id}/contacts/sync", null); }
+        finally
+        {
+            await Task.Delay(1500);
+            _syncing = false;
+            await LoadContacts();
+        }
+    }
+
+    private void OpenDetail(ContactItem c) =>
+        Nav.NavigateTo($"/contacts/{_selected!.Id}/{c.Id}");
+
+    private static List<string> ParseTags(string? tags)
+    {
+        if (string.IsNullOrEmpty(tags)) return [];
+        try
+        {
+            var parsed = System.Text.Json.JsonSerializer.Deserialize<List<string>>(tags);
+            return parsed ?? [];
+        }
+        catch { return []; }
+    }
+
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; public string PrimaryColor { get; set; } = "#f97316"; }
+    private class ContactItem
+    {
+        public Guid Id { get; set; }
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? Email { get; set; }
+        public string? Phone { get; set; }
+        public string? Tags { get; set; }
+        public DateTimeOffset? GhlCreatedAt { get; set; }
+    }
+    private class ContactsData
+    {
+        public List<ContactItem> Contacts { get; set; } = [];
+        public int Total { get; set; }
+        public bool GhlConfigured { get; set; }
+    }
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

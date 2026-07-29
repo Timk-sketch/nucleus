@@ -1,0 +1,161 @@
+@page "/contacts/{BrandId:guid}/{Id:guid}"
+@attribute [Authorize]
+@layout ContactsLayout
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<PageTitle>@(_contact?.FullName ?? "Contact") — Contacts Hub — Nucleus</PageTitle>
+
+@if (_loading)
+{
+    <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+}
+else if (_contact == null)
+{
+    <div class="empty-state">Contact not found. <a href="/contacts">Back to contacts</a></div>
+}
+else
+{
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">
+                @if (string.IsNullOrEmpty(_contact.FullName)) { <span>Unknown Contact</span> }
+                else { @_contact.FullName }
+            </h1>
+            <p class="page-subtitle">GHL contact profile and finder activity.</p>
+        </div>
+        <a href="/contacts" class="btn-secondary" style="text-decoration:none;">← All Contacts</a>
+    </div>
+
+    <!-- Contact card -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:28px;max-width:720px;">
+        <div class="stat-card">
+            <div class="stat-label">Email</div>
+            <div style="font-size:14px;font-weight:600;margin-top:4px;word-break:break-all;">
+                @if (_contact.Email != null)
+                { <a href="mailto:@_contact.Email" style="color:var(--hub-color);">@_contact.Email</a> }
+                else { <span style="color:var(--color-muted);">—</span> }
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Phone</div>
+            <div style="font-size:14px;font-weight:600;margin-top:4px;">@(_contact.Phone ?? "—")</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Added to GHL</div>
+            <div style="font-size:14px;font-weight:600;margin-top:4px;">
+                @(_contact.GhlCreatedAt.HasValue ? _contact.GhlCreatedAt.Value.ToString("MMM d, yyyy") : "—")
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Last Synced</div>
+            <div style="font-size:14px;font-weight:600;margin-top:4px;">
+                @_contact.SyncedAt.ToString("MMM d, yyyy h:mm tt")
+            </div>
+        </div>
+    </div>
+
+    @if (_contact.Tags.Count > 0)
+    {
+        <div style="margin-bottom:28px;">
+            <h3 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-muted);margin-bottom:12px;">Tags</h3>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                @foreach (var tag in _contact.Tags)
+                {
+                    <span style="padding:4px 12px;border-radius:999px;background:rgba(249,115,22,0.1);color:#f97316;font-size:12px;font-weight:600;">@tag</span>
+                }
+            </div>
+        </div>
+    }
+
+    <!-- Related finder leads -->
+    <h3 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-muted);margin-bottom:12px;">Finder Activity</h3>
+
+    @if (_leads.Count == 0)
+    {
+        <div class="empty-state">No finder activity found for this contact's email address.</div>
+    }
+    else
+    {
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Finder</th>
+                        <th>Completed</th>
+                        <th>Converted</th>
+                        <th>Captured</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var lead in _leads)
+                    {
+                        <tr>
+                            <td style="font-weight:600;">@lead.FinderName</td>
+                            <td>
+                                @if (lead.CompletedAt.HasValue)
+                                { <span style="color:#16a34a;font-size:12px;">@lead.CompletedAt.Value.ToString("MMM d, yyyy")</span> }
+                                else { <span style="color:var(--color-muted);font-size:12px;">—</span> }
+                            </td>
+                            <td>
+                                @if (lead.Converted)
+                                { <span class="status-badge status-badge--success">Converted</span> }
+                                else { <span class="status-badge status-badge--muted">No</span> }
+                            </td>
+                            <td style="font-size:12px;color:var(--color-muted);">@lead.CreatedAt.ToString("MMM d, yyyy")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public Guid BrandId { get; set; }
+    [Parameter] public Guid Id { get; set; }
+
+    private ContactDetail? _contact;
+    private List<LeadRow> _leads = [];
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var contactTask = Http.GetFromJsonAsync<ApiWrapper<ContactDetail>>(
+                $"api/v1/brands/{BrandId}/contacts/{Id}");
+            var leadsTask = Http.GetFromJsonAsync<ApiWrapper<List<LeadRow>>>(
+                $"api/v1/brands/{BrandId}/contacts/{Id}/leads");
+
+            await Task.WhenAll(contactTask, leadsTask);
+
+            _contact = contactTask.Result?.Data;
+            _leads = leadsTask.Result?.Data ?? [];
+        }
+        catch { }
+        finally { _loading = false; }
+    }
+
+    private class ContactDetail
+    {
+        public Guid Id { get; set; }
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? Email { get; set; }
+        public string? Phone { get; set; }
+        public List<string> Tags { get; set; } = [];
+        public DateTimeOffset? GhlCreatedAt { get; set; }
+        public DateTimeOffset SyncedAt { get; set; }
+        public string FullName => ((FirstName ?? "") + " " + (LastName ?? "")).Trim();
+    }
+    private class LeadRow
+    {
+        public Guid Id { get; set; }
+        public string FinderName { get; set; } = "";
+        public bool Converted { get; set; }
+        public DateTimeOffset? CompletedAt { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+    }
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

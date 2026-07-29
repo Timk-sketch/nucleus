@@ -52,8 +52,9 @@ A feature DOES NOT ship to Nucleus until it has been:
 | 32 | Finder Hub v2 — GHL lead capture, A/B testing, analytics CSV, visual conditions, white-label |
 | 33 | Reports Hub — cross-hub analytics: content, search, finders, distribution |
 | 34 | Leads Hub — paginated lead browser, per-finder filter, answers expand, CSV export |
+| 35 | Contacts Hub — GHL contacts as proper hub, contact detail with related finder leads |
 
-**Current state: Sprint 34 complete. Build: 0 errors, 0 warnings.**
+**Current state: Sprint 35 complete. Build: 0 errors, 0 warnings.**
 
 ---
 
@@ -279,6 +280,16 @@ A feature DOES NOT ship to Nucleus until it has been:
 - ✅ StudioLayout.razor — Video Library nav item added
 - NOTE: FAL_KEY still needs adding to Railway for image generation
 - Commit: 1cb932e
+
+### Sprint 35 — Contacts Hub ✅ COMPLETE (2026-07-28)
+- ✅ ContactsLayout.razor — Hub="contacts" HubColor="#f97316" (orange), single nav item
+- ✅ ShellLayout.razor — Contacts hub-pill added after Leads
+- ✅ Pages/Contacts/Index.razor — brand pills, search, sync, tags column, click-to-detail
+- ✅ Pages/Contacts/Detail.razor — /contacts/{brandId}/{id}, contact card + tags + finder leads table
+- ✅ ContactsController: GET /{contactId} (single contact with parsed tags) + GET /{contactId}/leads (finder sessions by email, EF join)
+- ✅ Pages/Contacts.razor renamed to ContactsLegacy.razor (eliminates Blazor namespace/type conflict)
+- ✅ No migrations — queries existing ghl_contacts + finder_sessions tables
+- ✅ Build: 0 errors, 0 warnings
 
 ### Sprint 34 — Leads Hub ✅ COMPLETE (2026-07-28)
 - ✅ GetBrandLeadsQuery — paginated, filterable by finder + days (FinderSessions with LeadEmail)

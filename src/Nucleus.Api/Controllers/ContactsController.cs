@@ -72,6 +72,92 @@ public class ContactsController(NucleusDbContext db) : ControllerBase
         }));
     }
 
+    // GET /api/v1/brands/{brandId}/contacts/{contactId}
+    [HttpGet("{contactId:guid}")]
+    public async Task<IActionResult> GetContact(
+        Guid brandId,
+        Guid contactId,
+        CancellationToken ct)
+    {
+        var contact = await db.GhlContacts
+            .Where(c => c.Id == contactId && c.BrandId == brandId && c.TenantId == CurrentTenantId)
+            .Select(c => new
+            {
+                c.Id,
+                c.FirstName,
+                c.LastName,
+                c.Email,
+                c.Phone,
+                c.Tags,
+                c.GhlCreatedAt,
+                c.SyncedAt,
+            })
+            .FirstOrDefaultAsync(ct);
+
+        if (contact is null) return NotFound(ApiResponse.Fail("Contact not found."));
+
+        // Parse Tags JSON array into List<string>
+        List<string> parsedTags = [];
+        if (!string.IsNullOrEmpty(contact.Tags))
+        {
+            try { parsedTags = System.Text.Json.JsonSerializer.Deserialize<List<string>>(contact.Tags) ?? []; }
+            catch { /* ignore malformed tags */ }
+        }
+
+        return Ok(ApiResponse.Ok(new
+        {
+            contact.Id,
+            contact.FirstName,
+            contact.LastName,
+            contact.Email,
+            contact.Phone,
+            Tags = parsedTags,
+            contact.GhlCreatedAt,
+            contact.SyncedAt,
+        }));
+    }
+
+    // GET /api/v1/brands/{brandId}/contacts/{contactId}/leads
+    [HttpGet("{contactId:guid}/leads")]
+    public async Task<IActionResult> GetContactLeads(
+        Guid brandId,
+        Guid contactId,
+        CancellationToken ct)
+    {
+        // Verify contact belongs to brand + tenant
+        var contact = await db.GhlContacts
+            .Where(c => c.Id == contactId && c.BrandId == brandId && c.TenantId == CurrentTenantId)
+            .Select(c => new { c.Email })
+            .FirstOrDefaultAsync(ct);
+
+        if (contact is null) return NotFound(ApiResponse.Fail("Contact not found."));
+
+        if (string.IsNullOrEmpty(contact.Email))
+            return Ok(ApiResponse.Ok(Array.Empty<object>()));
+
+        var email = contact.Email.ToLower();
+
+        // Finder sessions for this brand matched by lead email
+        var leads = await (
+            from fs in db.FinderSessions
+            join f in db.Finders on fs.FinderId equals f.Id
+            where f.BrandId == brandId
+               && fs.LeadEmail != null
+               && fs.LeadEmail.ToLower() == email
+            orderby fs.CreatedAt descending
+            select new
+            {
+                fs.Id,
+                FinderName = f.Name,
+                fs.Converted,
+                fs.CompletedAt,
+                fs.CreatedAt,
+            }
+        ).Take(20).ToListAsync(ct);
+
+        return Ok(ApiResponse.Ok(leads));
+    }
+
     // POST /api/v1/brands/{brandId}/contacts/sync
     [HttpPost("sync")]
     public async Task<IActionResult> TriggerSync(Guid brandId, CancellationToken ct)
