@@ -257,13 +257,19 @@ A feature DOES NOT ship to Nucleus until it has been:
 
 ## Sprint 31+ Roadmap
 
-### Sprint 31 — Studio Hub v2 + Plan Gates
-- Video Library Blazor page (/studio/videos)
-- GET /api/studio/pages/{id} — full page detail endpoint for editor pre-fill
-- PUT /api/studio/pages/{id} — update page content endpoint
-- Plan gates: TenantPlanService enforcement for all hubs
-- Flux API real integration (replace picsum stub)
-- Content Hub: wire real Claude API into GenerateContentCommand
+### Sprint 31 — Studio Hub v2 + Plan Gates ✅ COMPLETE (2026-07-28)
+- ✅ IClaudeService + ClaudeService (real Anthropic API, claude-sonnet-4-6)
+- ✅ IImageGenerationService + FalAiService (real fal.ai Flux schnell)
+- ✅ ITenantPlanService + TenantPlanService (starter: 5/mo content, 3/mo design, 0 image; pro/agency: unlimited)
+- ✅ GenerateContentCommand, GenerateDesignCommand, GenerateImageCommand wired to real AI
+- ✅ GetWebsitePageQuery + GET /api/studio/pages/{id}
+- ✅ UpdateWebsitePageCommand + PUT /api/studio/pages/{id}
+- ✅ GetVideoLibraryQuery + AddVideoAssetCommand + GET/POST /api/studio/videos
+- ✅ Videos/Index.razor — Blazor video library page at /studio/videos
+- ✅ Editor.razor wired to real GET/PUT endpoints
+- ✅ StudioLayout.razor — Video Library nav item added
+- NOTE: FAL_KEY still needs adding to Railway for image generation
+- Commit: 1cb932e
 
 ### Sprint 32+ — Finder Hub v2
 - GHL lead capture via Hangfire job on conversion
