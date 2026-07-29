@@ -53,8 +53,9 @@ A feature DOES NOT ship to Nucleus until it has been:
 | 33 | Reports Hub — cross-hub analytics: content, search, finders, distribution |
 | 34 | Leads Hub — paginated lead browser, per-finder filter, answers expand, CSV export |
 | 35 | Contacts Hub — GHL contacts as proper hub, contact detail with related finder leads |
+| 36 | Notification Center — bell + badge in topbar, /notifications unified feed (search alerts + brand mentions) |
 
-**Current state: Sprint 35 complete. Build: 0 errors, 0 warnings.**
+**Current state: Sprint 36 complete. Build: 0 errors, 0 warnings.**
 
 ---
 
@@ -280,6 +281,14 @@ A feature DOES NOT ship to Nucleus until it has been:
 - ✅ StudioLayout.razor — Video Library nav item added
 - NOTE: FAL_KEY still needs adding to Railway for image generation
 - Commit: 1cb932e
+
+### Sprint 36 — Notification Center ✅ COMPLETE (2026-07-28)
+- ✅ NotificationsController: GET /api/notifications (merged feed), GET /count, DELETE /alerts/{id}, PUT /mentions/{id}/reviewed
+- ✅ Pages/Notifications/Index.razor — brand picker, unified list (alert vs mention), dismiss/mark-read per item, clear-all
+- ✅ ShellLayout.razor — bell icon in topbar-right, loads unread count after brand selected, red badge if > 0
+- ✅ EF range expression bug fixed: MentionText[..140] moved out of LINQ expression tree to in-memory projection
+- ✅ No migrations — queries existing search_alerts + brand_mentions tables
+- ✅ Build: 0 errors, 0 warnings
 
 ### Sprint 35 — Contacts Hub ✅ COMPLETE (2026-07-28)
 - ✅ ContactsLayout.razor — Hub="contacts" HubColor="#f97316" (orange), single nav item

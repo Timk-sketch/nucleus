@@ -1,0 +1,223 @@
+@page "/notifications"
+@attribute [Authorize]
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<PageTitle>Notifications — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Notifications</h1>
+        <p class="page-subtitle">Search alerts and unreviewed brand mentions across all brands.</p>
+    </div>
+    @if (_items.Count > 0)
+    {
+        <button class="btn-secondary" @onclick="DismissAll" disabled="@_working" style="font-size:13px;">
+            Clear all
+        </button>
+    }
+</div>
+
+<!-- Brand picker -->
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px;">
+    @foreach (var b in _brands)
+    {
+        <button class="brand-pill-btn @(_selected?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                @onclick="() => SelectBrand(b)">
+            <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+            @b.Name
+        </button>
+    }
+</div>
+
+@if (_loading)
+{
+    <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+}
+else if (_items.Count == 0)
+{
+    <div class="empty-state" style="margin-top:48px;">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--color-muted);margin-bottom:12px;">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        <p>No unread notifications. All clear!</p>
+    </div>
+}
+else
+{
+    <div style="display:flex;flex-direction:column;gap:10px;max-width:760px;">
+        @foreach (var item in _items)
+        {
+            <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);
+                        padding:16px 20px;display:flex;align-items:flex-start;gap:14px;">
+
+                <!-- Type icon -->
+                <div style="flex-shrink:0;width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+                            background:@TypeBg(item);color:@TypeColor(item);">
+                    @if (item.Type == "alert")
+                    {
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
+                    }
+                    else
+                    {
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                        </svg>
+                    }
+                </div>
+
+                <!-- Content -->
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:@TypeColor(item);">
+                            @(item.Type == "alert" ? "Search Alert" : "Brand Mention")
+                        </span>
+                        @if (item.Sentiment != null)
+                        {
+                            <span style="font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;background:@SentimentBg(item.Sentiment);color:@SentimentColor(item.Sentiment);">
+                                @item.Sentiment
+                            </span>
+                        }
+                        <span style="font-size:12px;color:var(--color-muted);margin-left:auto;">@item.Date.ToString("MMM d, h:mm tt")</span>
+                    </div>
+
+                    <div style="font-weight:600;font-size:14px;margin-bottom:4px;">@item.Title</div>
+                    <div style="font-size:13px;color:var(--color-muted);line-height:1.5;">@item.Body</div>
+
+                    @if (!string.IsNullOrEmpty(item.Url))
+                    {
+                        <a href="@item.Url" target="_blank" rel="noopener noreferrer"
+                           style="font-size:12px;color:var(--color-accent);display:inline-block;margin-top:6px;word-break:break-all;">
+                            View source →
+                        </a>
+                    }
+                </div>
+
+                <!-- Action -->
+                <div style="flex-shrink:0;">
+                    @if (item.Type == "alert")
+                    {
+                        <button class="btn-secondary" style="font-size:12px;padding:5px 12px;"
+                                @onclick="() => DismissAlert(item.Id)" disabled="@_working">
+                            Dismiss
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="btn-secondary" style="font-size:12px;padding:5px 12px;"
+                                @onclick="() => MarkMentionRead(item.Id)" disabled="@_working">
+                            Mark read
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selected;
+    private List<NotifItem> _items = [];
+    private bool _loading;
+    private bool _working;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem b)
+    {
+        _selected = b; _items = [];
+        await LoadNotifications();
+    }
+
+    private async Task LoadNotifications()
+    {
+        if (_selected is null) return;
+        _loading = true;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<List<NotifItem>>>(
+                $"api/notifications?brandId={_selected.Id}");
+            _items = resp?.Data ?? [];
+        }
+        catch { }
+        finally { _loading = false; }
+    }
+
+    private async Task DismissAlert(Guid id)
+    {
+        _working = true;
+        try
+        {
+            await Http.DeleteAsync($"api/notifications/alerts/{id}");
+            _items.RemoveAll(i => i.Id == id);
+        }
+        finally { _working = false; }
+    }
+
+    private async Task MarkMentionRead(Guid id)
+    {
+        _working = true;
+        try
+        {
+            await Http.PutAsync($"api/notifications/mentions/{id}/reviewed", null);
+            _items.RemoveAll(i => i.Id == id);
+        }
+        finally { _working = false; }
+    }
+
+    private async Task DismissAll()
+    {
+        _working = true;
+        try
+        {
+            var alerts  = _items.Where(i => i.Type == "alert").Select(i => i.Id).ToList();
+            var mentions = _items.Where(i => i.Type == "mention").Select(i => i.Id).ToList();
+            var tasks = alerts.Select(id => Http.DeleteAsync($"api/notifications/alerts/{id}"))
+                .Concat(mentions.Select(id => Http.PutAsync($"api/notifications/mentions/{id}/reviewed", null)));
+            await Task.WhenAll(tasks);
+            _items.Clear();
+        }
+        finally { _working = false; }
+    }
+
+    private static string TypeBg(NotifItem item) => item.Type == "alert"
+        ? "rgba(239,68,68,0.1)" : "rgba(99,102,241,0.1)";
+    private static string TypeColor(NotifItem item) => item.Type == "alert"
+        ? "#ef4444" : "#6366f1";
+
+    private static string SentimentBg(string s) => s switch
+    {
+        "positive" => "rgba(16,185,129,0.1)",
+        "negative" => "rgba(239,68,68,0.1)",
+        _ => "rgba(0,0,0,0.05)",
+    };
+    private static string SentimentColor(string s) => s switch
+    {
+        "positive" => "#10b981",
+        "negative" => "#ef4444",
+        _ => "var(--color-muted)",
+    };
+
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; public string PrimaryColor { get; set; } = "#6366f1"; }
+    private class NotifItem
+    {
+        public Guid Id { get; set; }
+        public string Type { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string Body { get; set; } = "";
+        public DateTimeOffset Date { get; set; }
+        public string? AlertType { get; set; }
+        public string? Sentiment { get; set; }
+        public string? Url { get; set; }
+    }
+    private record ApiWrapper<T>(bool Success, T? Data);
+}
