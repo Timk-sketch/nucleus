@@ -1,0 +1,152 @@
+@page "/reports/search"
+@attribute [Authorize]
+@layout ReportsLayout
+@inject HttpClient Http
+
+<PageTitle>Search Performance — Reports Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Search Performance</h1>
+        <p class="page-subtitle">Keyword rankings by position tier, top movers and decliners.</p>
+    </div>
+</div>
+
+<div class="brand-pill-row">
+    @foreach (var b in _brands)
+    {
+        <button class="brand-pill-btn @(_selected?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                @onclick="() => SelectBrand(b)">
+            <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+            @b.Name
+        </button>
+    }
+</div>
+
+@if (_error != null) { <div class="alert-error">@_error</div> }
+@if (_loading) { <div class="loading-state"><div class="spinner spinner--lg"></div></div> }
+
+@if (_data != null)
+{
+    <!-- Position tier KPIs -->
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px;">
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Top 10</div>
+            <div class="stat-value" style="color:#16a34a;">@_data.Top10</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Top 30</div>
+            <div class="stat-value" style="color:#0ea5e9;">@_data.Top30</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Top 100</div>
+            <div class="stat-value">@_data.Top100</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Unranked</div>
+            <div class="stat-value" style="color:var(--color-muted);">@_data.Unranked</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Total Keywords</div>
+            <div class="stat-value" style="color:var(--hub-color);">@_data.KeywordsTotal</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Search Volume</div>
+            <div class="stat-value">@_data.TotalSearchVolume.ToString("N0")</div>
+        </div>
+    </div>
+
+    <!-- Top Movers -->
+    @if (_data.TopMovers.Count > 0)
+    {
+        <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">Top Movers (improved)</h3>
+        <div class="table-container" style="margin-bottom:28px;">
+            <table class="data-table">
+                <thead><tr><th>Keyword</th><th>Position</th><th>Previous</th><th>Delta</th><th>Volume</th></tr></thead>
+                <tbody>
+                    @foreach (var row in _data.TopMovers)
+                    {
+                        <tr>
+                            <td style="font-weight:600;">@row.Keyword</td>
+                            <td style="color:#16a34a;font-weight:600;">@(row.CurrentPosition?.ToString() ?? "—")</td>
+                            <td style="color:var(--color-muted);">@(row.PreviousPosition?.ToString() ?? "—")</td>
+                            <td style="color:#16a34a;font-weight:600;">+@row.Delta</td>
+                            <td style="font-size:12px;">@(row.SearchVolume?.ToString("N0") ?? "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <!-- Decliners -->
+    @if (_data.TopDecliners.Count > 0)
+    {
+        <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">Top Decliners (dropped)</h3>
+        <div class="table-container">
+            <table class="data-table">
+                <thead><tr><th>Keyword</th><th>Position</th><th>Previous</th><th>Delta</th><th>Volume</th></tr></thead>
+                <tbody>
+                    @foreach (var row in _data.TopDecliners)
+                    {
+                        <tr>
+                            <td style="font-weight:600;">@row.Keyword</td>
+                            <td style="color:var(--color-error);">@(row.CurrentPosition?.ToString() ?? "—")</td>
+                            <td style="color:var(--color-muted);">@(row.PreviousPosition?.ToString() ?? "—")</td>
+                            <td style="color:var(--color-error);">@row.Delta</td>
+                            <td style="font-size:12px;">@(row.SearchVolume?.ToString("N0") ?? "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (_data.TopMovers.Count == 0 && _data.TopDecliners.Count == 0)
+    {
+        <div class="empty-state">No position changes detected yet — check back after the next rank run.</div>
+    }
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selected;
+    private SearchData? _data;
+    private bool _loading;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem b)
+    {
+        _selected = b; _data = null; _loading = true; _error = null;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<SearchData>>(
+                $"api/reports/search?brandId={b.Id}");
+            _data = resp?.Data;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; public string PrimaryColor { get; set; } = "#06b6d4"; }
+    private class SearchData
+    {
+        public int KeywordsTotal { get; set; }
+        public int Top10 { get; set; }
+        public int Top30 { get; set; }
+        public int Top100 { get; set; }
+        public int Unranked { get; set; }
+        public int TotalSearchVolume { get; set; }
+        public List<MoverRow> TopMovers { get; set; } = [];
+        public List<MoverRow> TopDecliners { get; set; } = [];
+    }
+    private class MoverRow { public string Keyword { get; set; } = ""; public int? CurrentPosition { get; set; } public int? PreviousPosition { get; set; } public int Delta { get; set; } public int? SearchVolume { get; set; } }
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

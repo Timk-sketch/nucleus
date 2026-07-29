@@ -1,0 +1,159 @@
+@page "/reports/distribution"
+@attribute [Authorize]
+@layout ReportsLayout
+@inject HttpClient Http
+
+<PageTitle>Distribution Analytics — Reports Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Distribution Analytics</h1>
+        <p class="page-subtitle">Email engagement rates and social posts by platform.</p>
+    </div>
+    <select class="form-input" style="width:auto;" @bind="_days" @bind:after="LoadData">
+        <option value="7">Last 7 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="90">Last 90 days</option>
+    </select>
+</div>
+
+<div class="brand-pill-row">
+    @foreach (var b in _brands)
+    {
+        <button class="brand-pill-btn @(_selected?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                @onclick="() => SelectBrand(b)">
+            <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+            @b.Name
+        </button>
+    }
+</div>
+
+@if (_error != null) { <div class="alert-error">@_error</div> }
+@if (_loading) { <div class="loading-state"><div class="spinner spinner--lg"></div></div> }
+
+@if (_data != null)
+{
+    <!-- Email KPIs -->
+    <h3 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-muted);margin:28px 0 12px;">Email</h3>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px;">
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Messages Sent</div>
+            <div class="stat-value" style="color:var(--hub-color)">@_data.EmailMessagesSent</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Total Recipients</div>
+            <div class="stat-value">@_data.EmailTotalRecipients.ToString("N0")</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Opens</div>
+            <div class="stat-value">@_data.EmailTotalOpens.ToString("N0")</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Open Rate</div>
+            <div class="stat-value">
+                @(_data.EmailOpenRate.HasValue ? $"{_data.EmailOpenRate.Value * 100:F1}%" : "—")
+            </div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Clicks</div>
+            <div class="stat-value">@_data.EmailTotalClicks.ToString("N0")</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Click Rate</div>
+            <div class="stat-value" style="color:#16a34a;">
+                @(_data.EmailClickRate.HasValue ? $"{_data.EmailClickRate.Value * 100:F1}%" : "—")
+            </div>
+        </div>
+    </div>
+
+    <!-- Social by platform -->
+    <h3 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-muted);margin-bottom:12px;">Social</h3>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px;">
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Published</div>
+            <div class="stat-value" style="color:#16a34a;">@_data.SocialPostsPublished</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Failed</div>
+            <div class="stat-value" style="color:var(--color-error);">@_data.SocialPostsFailed</div>
+        </div>
+    </div>
+
+    @if (_data.ByPlatform.Count > 0)
+    {
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr><th>Platform</th><th>Published</th><th>Scheduled</th><th>Failed</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _data.ByPlatform.OrderByDescending(p => p.Published))
+                    {
+                        <tr>
+                            <td style="font-weight:600;text-transform:capitalize;">@row.Platform</td>
+                            <td style="color:#16a34a;font-weight:600;">@row.Published</td>
+                            <td style="color:#f59e0b;">@row.Scheduled</td>
+                            <td style="color:var(--color-error);">@row.Failed</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else if (_data.EmailMessagesSent == 0)
+    {
+        <div class="empty-state">No distribution activity in this window.</div>
+    }
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selected;
+    private DistData? _data;
+    private bool _loading;
+    private string? _error;
+    private int _days = 30;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem b)
+    {
+        _selected = b; _data = null;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        if (_selected is null) return;
+        _loading = true; _error = null;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<DistData>>(
+                $"api/reports/distribution?brandId={_selected.Id}&days={_days}");
+            _data = resp?.Data;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; public string PrimaryColor { get; set; } = "#06b6d4"; }
+    private class DistData
+    {
+        public int EmailMessagesSent { get; set; }
+        public int EmailTotalRecipients { get; set; }
+        public int EmailTotalOpens { get; set; }
+        public int EmailTotalClicks { get; set; }
+        public double? EmailOpenRate { get; set; }
+        public double? EmailClickRate { get; set; }
+        public int SocialPostsPublished { get; set; }
+        public int SocialPostsFailed { get; set; }
+        public List<PlatRow> ByPlatform { get; set; } = [];
+    }
+    private class PlatRow { public string Platform { get; set; } = ""; public int Published { get; set; } public int Scheduled { get; set; } public int Failed { get; set; } }
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

@@ -1,77 +1,77 @@
-# Implementation Plan: Sprint 32 — Finder Hub v2
+# Implementation Plan: Sprint 33 — Reports Hub
 
 ## Context
-GHL lead capture on conversion, A/B variant system (agency), CSV analytics export, white-label embed (agency), visual condition editor in Results builder.
+New cross-hub analytics hub — pure aggregation over existing tables, no new migrations.
 
-## Migration: AddFinderV2
-- **File**: `src/Nucleus.Infrastructure/Migrations/20260728_FinderV2.cs` (new)
-- finder_sessions: + lead_name text, lead_email text, lead_phone text, variant_id uuid nullable
-- finders: + white_label_enabled bool default false, custom_css text, logo_url text, primary_color_override text
-- New table: finder_variants (id, tenant_id, finder_id, name, intro_text_override, weight int default 50, created_at, updated_at)
+## New Files
 
-## Domain
-- `src/Nucleus.Domain/Entities/FinderSession.cs` — + LeadName?, LeadEmail?, LeadPhone?, VariantId?, Variant nav
-- `src/Nucleus.Domain/Entities/Finder.cs` — + WhiteLabelEnabled, CustomCss?, LogoUrl?, PrimaryColorOverride?, Variants nav
-- `src/Nucleus.Domain/Entities/FinderVariant.cs` (new) — TenantEntity; FinderId, Name, IntroTextOverride?, Weight
+### Layout
+- **File**: `src/Nucleus.Web/Layout/ReportsLayout.razor` (NEW)
+- **Change**: Hub="reports" HubColor="#06b6d4" HubName="Reports Hub"; 6 nav items: Overview, Content, Search, Finders, Distribution, (root)
 
-## Application
-- `src/Nucleus.Application/FinderHub/Commands/RecordFinderSessionCommand.cs`
-  - + LeadName?, LeadEmail?, LeadPhone? params; weighted variant assignment on new session; store lead fields
-- `src/Nucleus.Application/FinderHub/Commands/RecordFinderConversionCommand.cs`
-  - After SaveChanges: enqueue GhlLeadCaptureJob via IBackgroundJobService (only if brand has GhlApiKey)
-- `src/Nucleus.Application/FinderHub/Commands/CreateFinderVariantCommand.cs` (new) — plan gate: agency only
-- `src/Nucleus.Application/FinderHub/Queries/GetFinderVariantsQuery.cs` (new)
-- `src/Nucleus.Application/FinderHub/Queries/GetFinderAnalyticsQuery.cs` — + variant breakdown from sessions grouped by VariantId
-- `src/Nucleus.Application/FinderHub/DTOs/FinderAnalyticsDto.cs` — + List<VariantBreakdownDto> Variants
-- `src/Nucleus.Application/FinderHub/Queries/ExportFinderAnalyticsCsvQuery.cs` (new) — returns string CSV
-- `src/Nucleus.Application/FinderHub/DTOs/PublicFinderDto.cs` — + WhiteLabelEnabled, CustomCss?, LogoUrl?, PrimaryColorOverride?, AssignedVariantId?
-- `src/Nucleus.Application/FinderHub/Queries/GetPublicFinderQuery.cs` — extend to return white-label fields
-- `src/Nucleus.Application/FinderHub/DTOs/FinderBuilderDto.cs` — + white-label fields + List<FinderVariantDto> Variants
+### Blazor Pages
+- **File**: `src/Nucleus.Web/Pages/Reports/Index.razor` (NEW) — landing page with 5 feature cards
+- **File**: `src/Nucleus.Web/Pages/Reports/Overview.razor` (NEW) — cross-hub KPIs: content published, keywords ranked top-10, finder starts/conversions, AI spend, email reach
+- **File**: `src/Nucleus.Web/Pages/Reports/Content.razor` (NEW) — content volume by status + AI cost breakdown by feature
+- **File**: `src/Nucleus.Web/Pages/Reports/Search.razor` (NEW) — keywords by position tier + top movers table
+- **File**: `src/Nucleus.Web/Pages/Reports/Finders.razor` (NEW) — all finders for brand: starts, completions, conversions, leads captured
+- **File**: `src/Nucleus.Web/Pages/Reports/Distribution.razor` (NEW) — email messages (opens/clicks) + social posts by platform + channel reach
 
-## Infrastructure
-- `src/Nucleus.Infrastructure/Data/NucleusDbContext.cs` — + DbSet<FinderVariant>; configure FinderVariant entity
-- `src/Nucleus.Api/Jobs/GhlLeadCaptureJob.cs` (new) — Hangfire job: load session+brand, POST /v1/contacts to GHL; reuses "ghl" HttpClient
+### Application — DTOs
+- **File**: `src/Nucleus.Application/ReportsHub/DTOs/BrandOverviewDto.cs` (NEW) — KPI snapshot
+- **File**: `src/Nucleus.Application/ReportsHub/DTOs/ContentReportDto.cs` (NEW) — status counts + AI cost
+- **File**: `src/Nucleus.Application/ReportsHub/DTOs/SearchReportDto.cs` (NEW) — position tiers + snapshot rows
+- **File**: `src/Nucleus.Application/ReportsHub/DTOs/FinderReportDto.cs` (NEW) — per-finder stats
+- **File**: `src/Nucleus.Application/ReportsHub/DTOs/DistributionReportDto.cs` (NEW) — email + social stats
 
-## API
-- `src/Nucleus.Api/Controllers/FinderController.cs`
-  - RecordSession request model: + LeadName?, LeadEmail?, LeadPhone?
-  - + GET /api/finder/{id}/analytics/export?days= → CSV file response
-  - + POST /api/finder/{id}/variants → CreateFinderVariantCommand
-  - + GET /api/finder/{id}/variants → GetFinderVariantsQuery
+### Application — Queries
+- **File**: `src/Nucleus.Application/ReportsHub/Queries/GetBrandOverviewQuery.cs` (NEW)
+  - Queries: ContentPages (published last N days), KeywordRanks (pos ≤ 10), FinderAnalytics (last N days sum), AiUsage (last N days sum CostUsd), SendLog (last N days sum RecipientCount)
+- **File**: `src/Nucleus.Application/ReportsHub/Queries/GetContentReportQuery.cs` (NEW)
+  - Queries: ContentPages grouped by Status + PageType; AiUsage grouped by Feature (sum cost + tokens)
+- **File**: `src/Nucleus.Application/ReportsHub/Queries/GetSearchReportQuery.cs` (NEW)
+  - Queries: KeywordRanks (current positions, grouped by tier); KeywordRankSnapshots (last 5 for each keyword to show trend)
+- **File**: `src/Nucleus.Application/ReportsHub/Queries/GetFinderReportQuery.cs` (NEW)
+  - Queries: Finders for brand; FinderAnalytics last N days grouped by FinderId; FinderSessions for lead capture rate
+- **File**: `src/Nucleus.Application/ReportsHub/Queries/GetDistributionReportQuery.cs` (NEW)
+  - Queries: EmailCampaignMessages (sum OpenCount, ClickCount, RecipientCount); SocialPosts grouped by Platform + Status; SendLog sum RecipientCount by Channel
 
-## Blazor
-- `src/Nucleus.Web/Pages/Finder/Builder/Index.razor` — + Variants panel (agency gate) with weight sliders + add variant modal
-- `src/Nucleus.Web/Pages/Finder/Builder/Results.razor` — replace Nav.NavigateTo redirect with visual condition editor (step/option dropdowns → generates ConditionJson)
-- `src/Nucleus.Web/Pages/Finder/Analytics/Index.razor` — + Export CSV button (calls export endpoint) + variant breakdown table
+### API
+- **File**: `src/Nucleus.Api/Controllers/ReportsController.cs` (NEW)
+  - `GET /api/reports/overview?brandId=&days=30`
+  - `GET /api/reports/content?brandId=&days=30`
+  - `GET /api/reports/search?brandId=`
+  - `GET /api/reports/finders?brandId=&days=30`
+  - `GET /api/reports/distribution?brandId=&days=30`
+
+## Modified Files
+
+- **File**: `src/Nucleus.Web/Layout/ShellLayout.razor` ~line 88
+  - **Change**: Add Reports hub-pill button after Finder (Hub=="reports" active check, cyan bar chart SVG icon)
 
 ## Implementation Sequence
-1. Migration → `dotnet ef migrations add FinderV2`
-2. FinderVariant domain entity + NucleusDbContext registration
-3. FinderSession + Finder domain: add new properties
-4. GhlLeadCaptureJob
-5. RecordFinderSessionCommand (variant assignment + lead fields)
-6. RecordFinderConversionCommand (enqueue GHL job)
-7. CreateFinderVariantCommand + GetFinderVariantsQuery
-8. GetFinderAnalyticsQuery + ExportFinderAnalyticsCsvQuery + DTOs
-9. GetPublicFinderQuery + PublicFinderDto + FinderBuilderDto
-10. FinderController (4 changes/additions)
-11. Builder/Index.razor + Builder/Results.razor + Analytics/Index.razor
-12. `dotnet build && dotnet test`
+1. DTOs: BrandOverviewDto, ContentReportDto, SearchReportDto, FinderReportDto, DistributionReportDto
+2. Queries: GetBrandOverviewQuery, GetContentReportQuery, GetSearchReportQuery, GetFinderReportQuery, GetDistributionReportQuery
+3. ReportsController (5 endpoints)
+4. ReportsLayout.razor
+5. ShellLayout.razor — add hub button
+6. Pages/Reports/Index.razor (landing)
+7. Pages/Reports/Overview.razor
+8. Pages/Reports/Content.razor
+9. Pages/Reports/Search.razor
+10. Pages/Reports/Finders.razor
+11. Pages/Reports/Distribution.razor
+12. `dotnet build Nucleus.sln`
 
 ## Edge Cases & Risks
-- Variant weight: normalize weights so they always sum correctly (use proportional weighted random)
-- GHL job fire: only enqueue if finder's brand has GhlApiKey set (skip silently otherwise)
-- lead_capture StepType already a valid field value — no DB column needed, just new value string
-- Migration timestamp: use 20260728000001 (after last migration 20260721005306)
-- CSV export: use CsvHelper or manual StringBuilder; no new package — use StringBuilder
+- Brand ownership: all queries must filter by TenantId + BrandId (never cross-tenant)
+- Empty data: queries return empty/zero structs, never null — Blazor pages show "No data yet" states
+- KeywordRankSnapshot trend: only take last 5 per keyword ordered by CheckedAt desc (limit memory)
+- Days param: clamp to 1-365 range
 
 ## Verification
 ```
-dotnet ef migrations add FinderV2 --project src/Nucleus.Infrastructure --startup-project src/Nucleus.Api
-dotnet build Nucleus.sln && dotnet test
-git push origin master
-# POST /api/finder/{embedToken}/session with leadEmail → session.LeadEmail persisted
-# POST /api/finder/{embedToken}/convert → GHL job enqueued (check Hangfire dashboard)
-# GET /api/finder/{id}/analytics/export → CSV download
-# POST /api/finder/{id}/variants (agency JWT) → variant created; starter JWT → 403
+dotnet build Nucleus.sln
+# GET /api/reports/overview?brandId={id}&days=30 → 200 with KPI payload
+# Navigate /reports → hub landing; /reports/overview → stats cards
 ```

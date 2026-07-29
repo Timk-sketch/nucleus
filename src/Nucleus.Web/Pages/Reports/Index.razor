@@ -1,0 +1,92 @@
+@page "/reports"
+@attribute [Authorize]
+@layout ReportsLayout
+
+<PageTitle>Reports Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Reports Hub</h1>
+        <p class="page-subtitle">Cross-hub analytics — content, search, finders, and distribution in one view.</p>
+    </div>
+</div>
+
+<div class="hub-feature-grid">
+    <a href="/reports/overview" style="text-decoration:none;">
+        <div class="hub-feature-card">
+            <div class="hub-feature-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7" rx="1"/>
+                    <rect x="14" y="3" width="7" height="7" rx="1"/>
+                    <rect x="3" y="14" width="7" height="7" rx="1"/>
+                    <rect x="14" y="14" width="7" height="7" rx="1"/>
+                </svg>
+            </div>
+            <div>
+                <div class="hub-feature-name">Overview Dashboard</div>
+                <div class="hub-feature-desc">KPI snapshot across all hubs — content published, keywords ranked, finder conversions, AI spend, and distribution reach.</div>
+            </div>
+        </div>
+    </a>
+    <a href="/reports/content" style="text-decoration:none;">
+        <div class="hub-feature-card">
+            <div class="hub-feature-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+            </div>
+            <div>
+                <div class="hub-feature-name">Content Performance</div>
+                <div class="hub-feature-desc">Content volume by status and type, AI generation cost by feature and model, publishing velocity.</div>
+            </div>
+        </div>
+    </a>
+    <a href="/reports/search" style="text-decoration:none;">
+        <div class="hub-feature-card">
+            <div class="hub-feature-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+            </div>
+            <div>
+                <div class="hub-feature-name">Search Performance</div>
+                <div class="hub-feature-desc">Keyword rankings by position tier, top movers and decliners, total tracked search volume.</div>
+            </div>
+        </div>
+    </a>
+    <a href="/reports/finders" style="text-decoration:none;">
+        <div class="hub-feature-card">
+            <div class="hub-feature-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 11l3 3L22 4"/>
+                    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                </svg>
+            </div>
+            <div>
+                <div class="hub-feature-name">Finder Conversions</div>
+                <div class="hub-feature-desc">Per-finder funnel: starts, completions, conversions, and leads captured across all active finders.</div>
+            </div>
+        </div>
+    </a>
+    <a href="/reports/distribution" style="text-decoration:none;">
+        <div class="hub-feature-card">
+            <div class="hub-feature-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="18" cy="5" r="3"/>
+                    <circle cx="6" cy="12" r="3"/>
+                    <circle cx="18" cy="19" r="3"/>
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                </svg>
+            </div>
+            <div>
+                <div class="hub-feature-name">Distribution Analytics</div>
+                <div class="hub-feature-desc">Email open and click rates, social posts by platform, total audience reach across channels.</div>
+            </div>
+        </div>
+    </a>
+</div>

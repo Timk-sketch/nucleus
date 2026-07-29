@@ -50,8 +50,9 @@ A feature DOES NOT ship to Nucleus until it has been:
 | 30 | Finder Hub — quiz builder, embed widget, session tracking, conversion analytics |
 | 31 | Studio Hub v2 — real Claude API, fal.ai images, plan gates, video library |
 | 32 | Finder Hub v2 — GHL lead capture, A/B testing, analytics CSV, visual conditions, white-label |
+| 33 | Reports Hub — cross-hub analytics: content, search, finders, distribution |
 
-**Current state: Sprint 32 complete. Build: 0 errors, 0 warnings.**
+**Current state: Sprint 33 complete. Build: 0 errors, 0 warnings.**
 
 ---
 
@@ -277,6 +278,16 @@ A feature DOES NOT ship to Nucleus until it has been:
 - ✅ StudioLayout.razor — Video Library nav item added
 - NOTE: FAL_KEY still needs adding to Railway for image generation
 - Commit: 1cb932e
+
+### Sprint 33 — Reports Hub ✅ COMPLETE (2026-07-28)
+- ✅ 5 DTOs: BrandOverviewDto, ContentReportDto, SearchReportDto, FinderReportDto, DistributionReportDto
+- ✅ 5 MediatR queries: GetBrandOverviewQuery, GetContentReportQuery, GetSearchReportQuery, GetFinderReportQuery, GetDistributionReportQuery
+- ✅ ReportsController (5 endpoints: /api/reports/{overview|content|search|finders|distribution})
+- ✅ ReportsLayout.razor — Hub="reports" HubColor="#06b6d4" (cyan), 6 nav items
+- ✅ ShellLayout.razor — Reports hub-pill button added after Finder
+- ✅ 6 Blazor pages: Index, Overview, Content, Search, Finders, Distribution
+- ✅ No new migrations — pure aggregation over existing tables
+- ✅ Build: 0 errors, 0 warnings
 
 ### Sprint 32 — Finder Hub v2 ✅ COMPLETE (2026-07-28)
 - ✅ `lead_capture` StepType — contact form step in the widget (no migration needed for type column)

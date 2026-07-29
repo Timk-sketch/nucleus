@@ -1,0 +1,165 @@
+@page "/reports/finders"
+@attribute [Authorize]
+@layout ReportsLayout
+@inject HttpClient Http
+
+<PageTitle>Finder Conversions — Reports Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Finder Conversions</h1>
+        <p class="page-subtitle">Per-finder funnel: starts, completions, conversions, and leads captured.</p>
+    </div>
+    <select class="form-input" style="width:auto;" @bind="_days" @bind:after="LoadData">
+        <option value="7">Last 7 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="90">Last 90 days</option>
+    </select>
+</div>
+
+<div class="brand-pill-row">
+    @foreach (var b in _brands)
+    {
+        <button class="brand-pill-btn @(_selected?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                @onclick="() => SelectBrand(b)">
+            <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+            @b.Name
+        </button>
+    }
+</div>
+
+@if (_error != null) { <div class="alert-error">@_error</div> }
+@if (_loading) { <div class="loading-state"><div class="spinner spinner--lg"></div></div> }
+
+@if (_data != null)
+{
+    @if (_data.Finders.Count == 0)
+    {
+        <div class="empty-state" style="margin-top:24px;">No finders yet for this brand. <a href="/finder">Create a finder</a> first.</div>
+    }
+    else
+    {
+        <!-- Summary totals -->
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px;">
+            <div class="stat-card stat-card--sm">
+                <div class="stat-label">Total Starts</div>
+                <div class="stat-value" style="color:var(--hub-color);">@_data.Finders.Sum(f => f.Starts)</div>
+            </div>
+            <div class="stat-card stat-card--sm">
+                <div class="stat-label">Completions</div>
+                <div class="stat-value">@_data.Finders.Sum(f => f.Completions)</div>
+            </div>
+            <div class="stat-card stat-card--sm">
+                <div class="stat-label">Conversions</div>
+                <div class="stat-value" style="color:#16a34a;">@_data.Finders.Sum(f => f.Conversions)</div>
+            </div>
+            <div class="stat-card stat-card--sm">
+                <div class="stat-label">Leads Captured</div>
+                <div class="stat-value" style="color:#0ea5e9;">@_data.Finders.Sum(f => f.LeadsCaptured)</div>
+            </div>
+        </div>
+
+        <!-- Per-finder table -->
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Finder</th>
+                        <th>Status</th>
+                        <th>Starts</th>
+                        <th>Completions</th>
+                        <th>Completion %</th>
+                        <th>Conversions</th>
+                        <th>Conv. %</th>
+                        <th>Leads</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _data.Finders.OrderByDescending(f => f.Starts))
+                    {
+                        <tr>
+                            <td style="font-weight:600;">
+                                <a href="/finder/builder?id=@row.FinderId" style="color:var(--hub-color);">@row.FinderName</a>
+                            </td>
+                            <td>
+                                <span class="status-badge status-badge--@StatusClass(row.Status)">@row.Status</span>
+                            </td>
+                            <td>@row.Starts</td>
+                            <td>@row.Completions</td>
+                            <td style="font-size:12px;">
+                                @(row.CompletionRate.HasValue ? $"{row.CompletionRate.Value * 100:F1}%" : "—")
+                            </td>
+                            <td style="color:#16a34a;font-weight:600;">@row.Conversions</td>
+                            <td style="font-size:12px;">
+                                @(row.ConversionRate.HasValue ? $"{row.ConversionRate.Value * 100:F1}%" : "—")
+                            </td>
+                            <td style="color:#0ea5e9;">@row.LeadsCaptured</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selected;
+    private FinderReportData? _data;
+    private bool _loading;
+    private string? _error;
+    private int _days = 30;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem b)
+    {
+        _selected = b; _data = null;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        if (_selected is null) return;
+        _loading = true; _error = null;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<FinderReportData>>(
+                $"api/reports/finders?brandId={_selected.Id}&days={_days}");
+            _data = resp?.Data;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private static string StatusClass(string status) => status switch
+    {
+        "published" => "success",
+        "archived"  => "muted",
+        _           => "warning",
+    };
+
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; public string PrimaryColor { get; set; } = "#06b6d4"; }
+    private class FinderReportData
+    {
+        public List<FinderRow> Finders { get; set; } = [];
+    }
+    private class FinderRow
+    {
+        public Guid FinderId { get; set; }
+        public string FinderName { get; set; } = "";
+        public string Status { get; set; } = "";
+        public int Starts { get; set; }
+        public int Completions { get; set; }
+        public int Conversions { get; set; }
+        public int LeadsCaptured { get; set; }
+        public double? CompletionRate { get; set; }
+        public double? ConversionRate { get; set; }
+    }
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

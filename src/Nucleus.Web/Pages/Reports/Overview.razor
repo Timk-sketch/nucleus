@@ -1,0 +1,183 @@
+@page "/reports/overview"
+@attribute [Authorize]
+@layout ReportsLayout
+@inject HttpClient Http
+
+<PageTitle>Overview Dashboard — Reports Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Overview Dashboard</h1>
+        <p class="page-subtitle">Cross-hub KPIs for your brand — all hubs in one view.</p>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+        <select class="form-input" style="width:auto;" @bind="_days" @bind:after="LoadData">
+            <option value="7">Last 7 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="90">Last 90 days</option>
+        </select>
+    </div>
+</div>
+
+<div class="brand-pill-row">
+    @foreach (var b in _brands)
+    {
+        <button class="brand-pill-btn @(_selectedBrand?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                @onclick="() => SelectBrand(b)">
+            <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+            @b.Name
+        </button>
+    }
+</div>
+
+@if (_error != null) { <div class="alert-error">@_error</div> }
+
+@if (_loading)
+{
+    <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+}
+else if (_data != null)
+{
+    <!-- Content KPIs -->
+    <h3 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-muted);margin:28px 0 12px;">Content</h3>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px;">
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Published</div>
+            <div class="stat-value" style="color:var(--hub-color)">@_data.ContentPublished</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">In Review</div>
+            <div class="stat-value">@_data.ContentInReview</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Draft</div>
+            <div class="stat-value">@_data.ContentDraft</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">AI Spend</div>
+            <div class="stat-value">$@_data.AiSpendUsd.ToString("F2")</div>
+        </div>
+    </div>
+
+    <!-- SEO KPIs -->
+    <h3 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-muted);margin-bottom:12px;">Search</h3>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px;">
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Top 10</div>
+            <div class="stat-value" style="color:#16a34a;">@_data.KeywordsTop10</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Top 30</div>
+            <div class="stat-value">@_data.KeywordsTop30</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Total Keywords</div>
+            <div class="stat-value">@_data.KeywordsTotal</div>
+        </div>
+    </div>
+
+    <!-- Finder KPIs -->
+    <h3 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-muted);margin-bottom:12px;">Finders</h3>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px;">
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Starts</div>
+            <div class="stat-value">@_data.FinderStarts</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Completions</div>
+            <div class="stat-value">@_data.FinderCompletions</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Conversions</div>
+            <div class="stat-value" style="color:#16a34a;">@_data.FinderConversions</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Conv. Rate</div>
+            <div class="stat-value">
+                @(_data.FinderConversionRate.HasValue
+                    ? $"{_data.FinderConversionRate.Value * 100:F1}%"
+                    : "—")
+            </div>
+        </div>
+    </div>
+
+    <!-- Distribution KPIs -->
+    <h3 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-muted);margin-bottom:12px;">Distribution</h3>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;">
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Email Reach</div>
+            <div class="stat-value">@_data.EmailReach.ToString("N0")</div>
+        </div>
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Social Posts</div>
+            <div class="stat-value">@_data.SocialPostsPublished</div>
+        </div>
+    </div>
+}
+else if (_selectedBrand != null && !_loading)
+{
+    <div class="empty-state" style="margin-top:24px;">No data yet for <strong>@_selectedBrand.Name</strong>.</div>
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private BrandOverviewData? _data;
+    private bool _loading;
+    private string? _error;
+    private int _days = 30;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _data = null;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        if (_selectedBrand is null) return;
+        _loading = true; _error = null;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<BrandOverviewData>>(
+                $"api/reports/overview?brandId={_selectedBrand.Id}&days={_days}");
+            _data = resp?.Data;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private class BrandItem
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string PrimaryColor { get; set; } = "#06b6d4";
+    }
+
+    private class BrandOverviewData
+    {
+        public int ContentPublished { get; set; }
+        public int ContentInReview { get; set; }
+        public int ContentDraft { get; set; }
+        public int KeywordsTop10 { get; set; }
+        public int KeywordsTop30 { get; set; }
+        public int KeywordsTotal { get; set; }
+        public int FinderStarts { get; set; }
+        public int FinderCompletions { get; set; }
+        public int FinderConversions { get; set; }
+        public double? FinderConversionRate { get; set; }
+        public decimal AiSpendUsd { get; set; }
+        public int EmailReach { get; set; }
+        public int SocialPostsPublished { get; set; }
+    }
+
+    private record ApiWrapper<T>(bool Success, T? Data);
+}

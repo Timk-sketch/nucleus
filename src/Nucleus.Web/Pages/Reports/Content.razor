@@ -1,0 +1,166 @@
+@page "/reports/content"
+@attribute [Authorize]
+@layout ReportsLayout
+@inject HttpClient Http
+
+<PageTitle>Content Performance — Reports Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Content Performance</h1>
+        <p class="page-subtitle">Content volume by status and type, AI generation cost by feature.</p>
+    </div>
+    <select class="form-input" style="width:auto;" @bind="_days" @bind:after="LoadData">
+        <option value="7">Last 7 days (AI cost)</option>
+        <option value="30">Last 30 days</option>
+        <option value="90">Last 90 days</option>
+    </select>
+</div>
+
+<div class="brand-pill-row">
+    @foreach (var b in _brands)
+    {
+        <button class="brand-pill-btn @(_selected?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                @onclick="() => SelectBrand(b)">
+            <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+            @b.Name
+        </button>
+    }
+</div>
+
+@if (_error != null) { <div class="alert-error">@_error</div> }
+@if (_loading) { <div class="loading-state"><div class="spinner spinner--lg"></div></div> }
+
+@if (_data != null)
+{
+    <!-- Status bar -->
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px;">
+        @foreach (var (label, val, color) in new[] {
+            ("Published", _data.Published, "#16a34a"),
+            ("Approved",  _data.Approved,  "#0ea5e9"),
+            ("In Review", _data.InReview,  "#f59e0b"),
+            ("Draft",     _data.Draft,     "var(--color-muted)"),
+            ("Rejected",  _data.Rejected,  "var(--color-error)"),
+        })
+        {
+            <div class="stat-card stat-card--sm">
+                <div class="stat-label">@label</div>
+                <div class="stat-value" style="color:@color">@val</div>
+            </div>
+        }
+        <div class="stat-card stat-card--sm">
+            <div class="stat-label">Total</div>
+            <div class="stat-value" style="color:var(--hub-color)">@_data.TotalPages</div>
+        </div>
+    </div>
+
+    <!-- Page type breakdown -->
+    @if (_data.ByPageType.Count > 0)
+    {
+        <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">By Page Type</h3>
+        <div class="table-container" style="margin-bottom:28px;">
+            <table class="data-table">
+                <thead>
+                    <tr><th>Type</th><th>Total</th><th>Published</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _data.ByPageType.OrderByDescending(r => r.Count))
+                    {
+                        <tr>
+                            <td style="font-weight:600;">@row.PageType</td>
+                            <td>@row.Count</td>
+                            <td style="color:#16a34a;">@row.Published</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <!-- AI cost -->
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">
+        AI Cost — Last @_days days
+        <span style="font-size:12px;font-weight:400;color:var(--color-muted);margin-left:8px;">
+            Total: $@_data.TotalAiSpendUsd.ToString("F4") / @_data.TotalAiTokens.ToString("N0") tokens
+        </span>
+    </h3>
+    @if (_data.AiByFeature.Count > 0)
+    {
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr><th>Feature</th><th>Model</th><th>Tokens</th><th>Cost (USD)</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _data.AiByFeature)
+                    {
+                        <tr>
+                            <td style="font-weight:600;">@row.Feature</td>
+                            <td style="font-size:11px;color:var(--color-muted);">@row.Model</td>
+                            <td>@row.Tokens.ToString("N0")</td>
+                            <td style="color:var(--hub-color);">$@row.CostUsd.ToString("F4")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="empty-state">No AI usage recorded in this window.</div>
+    }
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selected;
+    private ContentData? _data;
+    private bool _loading;
+    private string? _error;
+    private int _days = 30;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem b)
+    {
+        _selected = b; _data = null;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        if (_selected is null) return;
+        _loading = true; _error = null;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<ContentData>>(
+                $"api/reports/content?brandId={_selected.Id}&days={_days}");
+            _data = resp?.Data;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; public string PrimaryColor { get; set; } = "#06b6d4"; }
+    private class ContentData
+    {
+        public int TotalPages { get; set; }
+        public int Draft { get; set; }
+        public int InReview { get; set; }
+        public int Approved { get; set; }
+        public int Published { get; set; }
+        public int Rejected { get; set; }
+        public List<TypeRow> ByPageType { get; set; } = [];
+        public decimal TotalAiSpendUsd { get; set; }
+        public int TotalAiTokens { get; set; }
+        public List<AiRow> AiByFeature { get; set; } = [];
+    }
+    private class TypeRow { public string PageType { get; set; } = ""; public int Count { get; set; } public int Published { get; set; } }
+    private class AiRow { public string Feature { get; set; } = ""; public string Model { get; set; } = ""; public int Tokens { get; set; } public decimal CostUsd { get; set; } }
+    private record ApiWrapper<T>(bool Success, T? Data);
+}
