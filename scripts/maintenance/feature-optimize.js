@@ -14,15 +14,17 @@ import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 import { notify } from '../worker/notifier.js';
 
-const supabase = createClient(
-  process.env.NUCLEUS_SUPABASE_URL,
-  process.env.NUCLEUS_SUPABASE_SERVICE_KEY
-);
-
+// Guard BEFORE createClient — createClient throws on an undefined URL, so
+// checking afterwards could never actually skip; the job crashed instead.
 if (!process.env.NUCLEUS_SUPABASE_URL || !process.env.NUCLEUS_SUPABASE_SERVICE_KEY) {
   console.log('[feature-optimize] Missing NUCLEUS_SUPABASE_URL or NUCLEUS_SUPABASE_SERVICE_KEY — skipping');
   process.exit(0);
 }
+
+const supabase = createClient(
+  process.env.NUCLEUS_SUPABASE_URL,
+  process.env.NUCLEUS_SUPABASE_SERVICE_KEY
+);
 
 const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 const issues = [];

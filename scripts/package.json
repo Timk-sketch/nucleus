@@ -1,0 +1,19 @@
+{
+  "name": "nucleus-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared dependency root for scripts/ automation. Node resolves bare imports by walking UP from the importing file, so deps must live here (an ancestor of both maintenance/ and worker/) rather than in a sibling folder.",
+  "scripts": {
+    "security": "node maintenance/security-sweep.js",
+    "perf": "node maintenance/perf-audit.js",
+    "optimize": "node maintenance/feature-optimize.js",
+    "deps": "node maintenance/dep-update.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@supabase/supabase-js": "^2.45.0",
+    "dotenv": "^16.4.0",
+    "js-yaml": "^4.1.0"
+  }
+}
