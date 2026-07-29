@@ -48,8 +48,10 @@ A feature DOES NOT ship to Nucleus until it has been:
 | 28 | Studio Hub — page manager, design studio, image generator, asset library |
 | 29 | CMS Renderer Hub — public page renderer, custom domains, site deploy, cache invalidation, analytics |
 | 30 | Finder Hub — quiz builder, embed widget, session tracking, conversion analytics |
+| 31 | Studio Hub v2 — real Claude API, fal.ai images, plan gates, video library |
+| 32 | Finder Hub v2 — GHL lead capture, A/B testing, analytics CSV, visual conditions, white-label |
 
-**Current state: Sprint 24 complete (re-implemented). Build: 0 errors, 0 warnings. Tests: 5/5 pass.**
+**Current state: Sprint 32 complete. Build: 0 errors, 0 warnings.**
 
 ---
 
@@ -236,12 +238,17 @@ A feature DOES NOT ship to Nucleus until it has been:
 - Site visit analytics (30-day window, top pages, daily chart)
 - `CmsController` at `/cms/{slug}` (public) + `/api/cms/*` (auth)
 
-### Finder Hub (Sprint 30)
+### Finder Hub (Sprint 30 + Sprint 32)
 - Quiz/product-finder builder (multi-step with options)
 - Result condition matching (JSON conditions, exact + OR)
 - Anonymous session tracking + conversion recording
-- Daily analytics (starts/completions/conversions)
+- Daily analytics (starts/completions/conversions) + CSV export
 - Embeddable widget via EmbedToken (no auth required)
+- `lead_capture` StepType — contact form collects LeadName/LeadEmail/LeadPhone
+- GHL contact creation on conversion (Hangfire job)
+- A/B variant testing (agency plan) — weighted random session assignment + breakdown in analytics
+- Visual condition editor for result matching (Builder/Results.razor)
+- White-label embed — CustomCss/LogoUrl/PrimaryColorOverride (agency plan)
 - `FinderController` at `/api/finder`
 
 ### Infrastructure
@@ -271,12 +278,21 @@ A feature DOES NOT ship to Nucleus until it has been:
 - NOTE: FAL_KEY still needs adding to Railway for image generation
 - Commit: 1cb932e
 
-### Sprint 32+ — Finder Hub v2
-- GHL lead capture via Hangfire job on conversion
-- A/B testing (agency plan)
-- Analytics export (CSV)
-- White-label embed (agency plan)
-- Custom result conditions UI
+### Sprint 32 — Finder Hub v2 ✅ COMPLETE (2026-07-28)
+- ✅ `lead_capture` StepType — contact form step in the widget (no migration needed for type column)
+- ✅ FinderSession gains LeadName/LeadEmail/LeadPhone + VariantId (AddFinderV2 migration)
+- ✅ Finder entity gains WhiteLabelEnabled/CustomCss/LogoUrl/PrimaryColorOverride (same migration)
+- ✅ FinderVariant entity + finder_variants table (AddFinderV2 migration — 3 tables modified)
+- ✅ A/B testing (agency plan gate): CreateFinderVariantCommand, GetFinderVariantsQuery, weighted random assignment in RecordFinderSessionCommand, variant breakdown in GetFinderAnalyticsQuery
+- ✅ GHL lead capture: GhlLeadCaptureJob (Hangfire) enqueued by FinderController after RecordFinderConversionCommand returns session.Id (Guid?)
+- ✅ Analytics CSV export: ExportFinderAnalyticsCsvQuery + GET /api/finder/{id}/analytics/export + Export CSV button in Analytics/Index.razor
+- ✅ UpdateFinderResultCommand + PUT /api/finder/results/{id}
+- ✅ Builder/Results.razor rebuilt as visual condition editor (step/option dropdowns → ConditionJson)
+- ✅ Builder/Index.razor: A/B Variants panel + Add Variant modal + lead_capture in step type dropdown
+- ✅ Analytics/Index.razor: variant breakdown table + Export CSV button + JS downloadFileFromBase64 helper
+- ✅ GetPublicFinderQuery + GetFinderBuilderQuery return white-label fields
+- ✅ Build: 0 errors, 0 warnings
+- Commit: d03eea1
 
 ### Ongoing — Infrastructure
 - Redis (when scaling to 2+ Railway instances)
