@@ -54,8 +54,9 @@ A feature DOES NOT ship to Nucleus until it has been:
 | 34 | Leads Hub — paginated lead browser, per-finder filter, answers expand, CSV export |
 | 35 | Contacts Hub — GHL contacts as proper hub, contact detail with related finder leads |
 | 36 | Notification Center — bell + badge in topbar, /notifications unified feed (search alerts + brand mentions) |
+| 37 | Keyword Manager — add keyword, delete keyword, bulk import (paste list), trigger rank check; all wired to existing ContentController endpoints |
 
-**Current state: Sprint 36 complete. Build: 0 errors, 0 warnings.**
+**Current state: Sprint 37 complete. Build: 0 errors, 0 warnings.**
 
 ---
 
@@ -281,6 +282,16 @@ A feature DOES NOT ship to Nucleus until it has been:
 - ✅ StudioLayout.razor — Video Library nav item added
 - NOTE: FAL_KEY still needs adding to Railway for image generation
 - Commit: 1cb932e
+
+### Sprint 37 — Keyword Manager ✅ COMPLETE (2026-07-28)
+- ✅ Pages/Content/Keywords/Index.razor — add keyword form (inline, Enter-to-submit), delete per row (✕ button), bulk import textarea (paste comma/newline list), Check Rankings button
+- ✅ Add: POST /api/v1/brands/{brandId}/keywords — keyboard shortcut (Enter) + button
+- ✅ Delete: DELETE /api/v1/brands/{brandId}/keywords/{keywordId} — per-row ✕ with hover red style
+- ✅ Bulk import: splits on newline + comma, deduplicates, calls add endpoint for each; shows count on completion
+- ✅ Rank check: POST /api/v1/brands/{brandId}/keywords/ranks/check — enqueues Hangfire job
+- ✅ Toast notifications (4s auto-clear) for all operations
+- ✅ All endpoints already existed in ContentController — pure UI change
+- ✅ Build: 0 errors, 0 warnings
 
 ### Sprint 36 — Notification Center ✅ COMPLETE (2026-07-28)
 - ✅ NotificationsController: GET /api/notifications (merged feed), GET /count, DELETE /alerts/{id}, PUT /mentions/{id}/reviewed

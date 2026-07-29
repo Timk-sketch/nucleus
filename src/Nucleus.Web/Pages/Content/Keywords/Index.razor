@@ -61,16 +61,79 @@ else
             </div>
         </div>
 
+        <!-- Toast message -->
+        @if (!string.IsNullOrEmpty(_toast))
+        {
+            <div style="margin-bottom:16px;padding:10px 16px;border-radius:var(--radius);background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);color:#059669;font-size:13px;font-weight:600;">
+                @_toast
+            </div>
+        }
+
         <!-- Search + Actions -->
-        <div style="display:flex;gap:12px;margin-bottom:20px;align-items:center;flex-wrap:wrap;">
+        <div style="display:flex;gap:12px;margin-bottom:@(_showAdd || _showBulk ? "12px" : "20px");align-items:center;flex-wrap:wrap;">
             <input class="form-input" @bind="_search" @bind:event="oninput"
                    placeholder="Search keywords…"
-                   style="max-width:300px;flex:1;" />
+                   style="max-width:280px;flex:1;" />
+            <button class="btn-secondary" style="font-size:13px;white-space:nowrap;"
+                    @onclick="ToggleBulk" disabled="@_working">
+                Bulk Import
+            </button>
+            <button class="btn-secondary" style="font-size:13px;white-space:nowrap;"
+                    @onclick="CheckRankings" disabled="@(_working || _checkingRanks)">
+                @(_checkingRanks ? "Queued…" : "Check Rankings")
+            </button>
+            <button class="btn-secondary" style="font-size:13px;white-space:nowrap;background:rgba(59,130,246,0.08);border-color:#3b82f6;color:#3b82f6;"
+                    @onclick="ToggleAdd" disabled="@_working">
+                @(_showAdd ? "Cancel" : "+ Add Keyword")
+            </button>
             <button class="btn-primary" style="font-size:13px;"
                     @onclick="NavigateToGenerator">
                 + Generate Content
             </button>
         </div>
+
+        <!-- Add keyword form -->
+        @if (_showAdd)
+        {
+            <div style="background:var(--color-surface);border:1px solid #3b82f6;border-radius:var(--radius);padding:16px 20px;margin-bottom:20px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+                <div style="flex:2;min-width:200px;">
+                    <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-muted);display:block;margin-bottom:4px;">Keyword</label>
+                    <input class="form-input" @bind="_newKeyword" placeholder="e.g. car registration online"
+                           style="width:100%;" @onkeyup="AddKeywordOnEnter" />
+                </div>
+                <div style="flex:2;min-width:180px;">
+                    <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-muted);display:block;margin-bottom:4px;">Target URL <span style="font-weight:400;">(optional)</span></label>
+                    <input class="form-input" @bind="_newTargetUrl" placeholder="https://…"
+                           style="width:100%;" />
+                </div>
+                <button class="btn-primary" style="font-size:13px;flex-shrink:0;"
+                        @onclick="AddKeyword" disabled="@(_working || string.IsNullOrWhiteSpace(_newKeyword))">
+                    @(_working ? "Adding…" : "Add")
+                </button>
+            </div>
+        }
+
+        <!-- Bulk import form -->
+        @if (_showBulk)
+        {
+            <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:16px 20px;margin-bottom:20px;">
+                <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-muted);display:block;margin-bottom:8px;">
+                    Paste keywords — one per line or comma-separated
+                </label>
+                <textarea class="form-input" @bind="_bulkText"
+                          rows="5" placeholder="car registration online&#10;motorcycle title transfer&#10;dmv services near me"
+                          style="width:100%;font-family:monospace;font-size:13px;resize:vertical;"></textarea>
+                <div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end;">
+                    <button class="btn-secondary" style="font-size:13px;" @onclick="CancelBulk">
+                        Cancel
+                    </button>
+                    <button class="btn-primary" style="font-size:13px;"
+                            @onclick="BulkImport" disabled="@(_working || string.IsNullOrWhiteSpace(_bulkText))">
+                        @(_working ? "Importing…" : "Import Keywords")
+                    </button>
+                </div>
+            </div>
+        }
 
         @if (_loading)
         {
@@ -79,7 +142,7 @@ else
         else if (_library?.Keywords.Count == 0)
         {
             <div class="empty-state">
-                No keywords tracked yet. Go to Content → Blog posts → Keywords to add keywords.
+                No keywords tracked yet. Use "+ Add Keyword" above or paste a bulk list to get started.
             </div>
         }
         else
@@ -131,10 +194,7 @@ else
                                     }
                                     else
                                     {
-                                        <button @onclick="() => GenerateForKeyword(kw)"
-                                                style="padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;border:1px dashed var(--color-border);background:none;cursor:pointer;color:var(--color-muted);">
-                                            + Generate
-                                        </button>
+                                        <span style="padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;color:var(--color-muted);">none</span>
                                     }
                                 </td>
                                 <td style="padding:14px 20px;font-size:13px;color:var(--color-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
@@ -151,10 +211,17 @@ else
                                 <td style="padding:14px 20px;font-size:13px;color:var(--color-muted);">
                                     @(kw.LastCheckedAt.HasValue ? kw.LastCheckedAt.Value.ToString("MMM d") : "—")
                                 </td>
-                                <td style="padding:14px 20px;text-align:right;">
+                                <td style="padding:14px 20px;text-align:right;white-space:nowrap;">
                                     <button @onclick="() => GenerateForKeyword(kw)"
-                                            style="font-size:12px;color:#3b82f6;background:none;border:none;cursor:pointer;">
+                                            style="font-size:12px;color:#3b82f6;background:none;border:none;cursor:pointer;margin-right:12px;">
                                         Generate →
+                                    </button>
+                                    <button @onclick="() => DeleteKeyword(kw.Id)"
+                                            disabled="@_working"
+                                            title="Delete keyword"
+                                            style="font-size:13px;color:var(--color-muted);background:none;border:none;cursor:pointer;line-height:1;padding:2px 4px;border-radius:4px;"
+                                            onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='var(--color-muted)'">
+                                        ✕
                                     </button>
                                 </td>
                             </tr>
@@ -173,6 +240,20 @@ else
     private string _search = "";
     private KeywordLibraryDto? _library;
 
+    // Add keyword form
+    private bool _showAdd;
+    private string _newKeyword = "";
+    private string _newTargetUrl = "";
+
+    // Bulk import
+    private bool _showBulk;
+    private string _bulkText = "";
+
+    // Status
+    private bool _working;
+    private bool _checkingRanks;
+    private string _toast = "";
+
     protected override async Task OnInitializedAsync()
     {
         var resp = await Http.GetFromJsonAsync<ApiWrap<List<BrandItem>>>("api/v1/brands");
@@ -185,6 +266,8 @@ else
     {
         _selectedBrand = brand;
         _search = "";
+        _showAdd = false;
+        _showBulk = false;
         await LoadLibrary();
     }
 
@@ -200,6 +283,131 @@ else
         }
         catch { }
         finally { _loading = false; }
+    }
+
+    private void ToggleAdd()
+    {
+        _showAdd = !_showAdd;
+        if (_showAdd) _showBulk = false;
+        _newKeyword = "";
+        _newTargetUrl = "";
+    }
+
+    private void ToggleBulk()
+    {
+        _showBulk = !_showBulk;
+        if (_showBulk) _showAdd = false;
+        _bulkText = "";
+    }
+
+    private void CancelBulk()
+    {
+        _showBulk = false;
+        _bulkText = "";
+    }
+
+    private async Task AddKeywordOnEnter(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_newKeyword))
+            await AddKeyword();
+    }
+
+    private async Task AddKeyword()
+    {
+        if (_selectedBrand is null || string.IsNullOrWhiteSpace(_newKeyword)) return;
+        _working = true;
+        _toast = "";
+        try
+        {
+            var req = new { keyword = _newKeyword.Trim(), targetUrl = string.IsNullOrWhiteSpace(_newTargetUrl) ? null : _newTargetUrl.Trim() };
+            var resp = await Http.PostAsJsonAsync($"api/v1/brands/{_selectedBrand.Id}/keywords", req);
+            if (resp.IsSuccessStatusCode)
+            {
+                _newKeyword = "";
+                _newTargetUrl = "";
+                _showAdd = false;
+                await LoadLibrary();
+                ShowToast("Keyword added.");
+            }
+        }
+        catch { }
+        finally { _working = false; }
+    }
+
+    private async Task BulkImport()
+    {
+        if (_selectedBrand is null || string.IsNullOrWhiteSpace(_bulkText)) return;
+        _working = true;
+        _toast = "";
+        try
+        {
+            var lines = _bulkText
+                .Split(['\n', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var added = 0;
+            foreach (var kw in lines)
+            {
+                var req = new { keyword = kw };
+                var resp = await Http.PostAsJsonAsync($"api/v1/brands/{_selectedBrand.Id}/keywords", req);
+                if (resp.IsSuccessStatusCode) added++;
+            }
+
+            _showBulk = false;
+            _bulkText = "";
+            await LoadLibrary();
+            ShowToast($"{added} keyword{(added != 1 ? "s" : "")} imported.");
+        }
+        catch { }
+        finally { _working = false; }
+    }
+
+    private async Task DeleteKeyword(Guid keywordId)
+    {
+        if (_selectedBrand is null) return;
+        _working = true;
+        _toast = "";
+        try
+        {
+            var resp = await Http.DeleteAsync($"api/v1/brands/{_selectedBrand.Id}/keywords/{keywordId}");
+            if (resp.IsSuccessStatusCode)
+            {
+                await LoadLibrary();
+                ShowToast("Keyword removed.");
+            }
+        }
+        catch { }
+        finally { _working = false; }
+    }
+
+    private async Task CheckRankings()
+    {
+        if (_selectedBrand is null) return;
+        _checkingRanks = true;
+        _toast = "";
+        try
+        {
+            var resp = await Http.PostAsync($"api/v1/brands/{_selectedBrand.Id}/keywords/ranks/check", null);
+            if (resp.IsSuccessStatusCode)
+                ShowToast("Rank check queued — results will appear within a few minutes.");
+        }
+        catch { }
+        finally { _checkingRanks = false; }
+    }
+
+    private void ShowToast(string msg)
+    {
+        _toast = msg;
+        _ = ClearToastAfterDelay();
+    }
+
+    private async Task ClearToastAfterDelay()
+    {
+        await Task.Delay(4000);
+        _toast = "";
+        StateHasChanged();
     }
 
     private IEnumerable<KeywordItemDto> FilteredKeywords()
