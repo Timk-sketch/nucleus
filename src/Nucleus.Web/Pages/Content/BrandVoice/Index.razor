@@ -107,9 +107,16 @@ else
                                         <div style="font-size:12px;color:var(--color-muted);margin-top:2px;">@word.Reason</div>
                                     }
                                 </div>
-                                <span style="font-size:11px;color:var(--color-muted);flex-shrink:0;">
+                                <span style="font-size:11px;color:var(--color-muted);flex-shrink:0;margin-right:8px;">
                                     @word.CreatedAt.ToString("MMM d")
                                 </span>
+                                <button @onclick="() => DeleteBannedWord(word.Id)"
+                                        disabled="@_deleting"
+                                        title="Remove banned word"
+                                        style="background:none;border:none;cursor:pointer;color:var(--color-muted);font-size:14px;line-height:1;padding:2px 4px;border-radius:4px;flex-shrink:0;"
+                                        onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='var(--color-muted)'">
+                                    ✕
+                                </button>
                             </div>
                         }
                     </div>
@@ -133,7 +140,7 @@ else
 @code {
     private List<BrandItem> _brands = [];
     private BrandItem? _selectedBrand;
-    private bool _brandsLoading = true, _loading, _adding;
+    private bool _brandsLoading = true, _loading, _adding, _deleting;
     private BrandVoiceDto? _voice;
     private string _newWord = "", _newReason = "";
     private string? _addError, _addSuccess;
@@ -195,6 +202,23 @@ else
         }
         catch (Exception ex) { _addError = ex.Message; }
         finally { _adding = false; }
+    }
+
+    private async Task DeleteBannedWord(Guid id)
+    {
+        _addError = _addSuccess = null;
+        _deleting = true;
+        try
+        {
+            var resp = await Http.DeleteAsync($"api/content/brand-voice/banned-words/{id}");
+            if (resp.IsSuccessStatusCode)
+            {
+                _addSuccess = "Banned word removed.";
+                await LoadVoice();
+            }
+        }
+        catch { }
+        finally { _deleting = false; }
     }
 
     private static string ExtractError(string json)

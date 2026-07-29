@@ -55,8 +55,9 @@ A feature DOES NOT ship to Nucleus until it has been:
 | 35 | Contacts Hub — GHL contacts as proper hub, contact detail with related finder leads |
 | 36 | Notification Center — bell + badge in topbar, /notifications unified feed (search alerts + brand mentions) |
 | 37 | Keyword Manager — add keyword, delete keyword, bulk import (paste list), trigger rank check; all wired to existing ContentController endpoints |
+| 38 | Brand Voice delete — RemoveBannedWordCommand + DELETE /api/content/brand-voice/banned-words/{id} + ✕ delete button per word in BrandVoice page |
 
-**Current state: Sprint 37 complete. Build: 0 errors, 0 warnings.**
+**Current state: Sprint 38 complete. Build: 0 errors, 0 warnings.**
 
 ---
 
@@ -282,6 +283,13 @@ A feature DOES NOT ship to Nucleus until it has been:
 - ✅ StudioLayout.razor — Video Library nav item added
 - NOTE: FAL_KEY still needs adding to Railway for image generation
 - Commit: 1cb932e
+
+### Sprint 38 — Brand Voice Delete ✅ COMPLETE (2026-07-28)
+- ✅ Application/ContentHub/Commands/RemoveBannedWordCommand.cs — MediatR command + handler, tenant-scoped delete
+- ✅ ContentHubController.cs — DELETE /api/content/brand-voice/banned-words/{id} added
+- ✅ Pages/Content/BrandVoice/Index.razor — ✕ delete button per row with hover red, calls delete endpoint, reloads list
+- ✅ No migration needed — deletes from existing banned_words table
+- ✅ Build: 0 errors, 0 warnings
 
 ### Sprint 37 — Keyword Manager ✅ COMPLETE (2026-07-28)
 - ✅ Pages/Content/Keywords/Index.razor — add keyword form (inline, Enter-to-submit), delete per row (✕ button), bulk import textarea (paste comma/newline list), Check Rankings button

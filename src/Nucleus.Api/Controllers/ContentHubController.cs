@@ -273,6 +273,16 @@ public class ContentHubController(IMediator mediator) : ControllerBase
         }
     }
 
+    /// <summary>DELETE /api/content/brand-voice/banned-words/{id}</summary>
+    [HttpDelete("brand-voice/banned-words/{id:guid}")]
+    [ProducesResponseType(204)]
+    [ProducesResponseType(404)]
+    public async Task<IActionResult> RemoveBannedWord(Guid id, CancellationToken ct)
+    {
+        var found = await mediator.Send(new RemoveBannedWordCommand(id), ct);
+        return found ? NoContent() : NotFound(new { success = false, error = "Banned word not found." });
+    }
+
     // ─── Content Templates ────────────────────────────────────────────────
 
     /// <summary>GET /api/content/templates?brandId={id}&pageType=&activeOnly=true</summary>
