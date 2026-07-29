@@ -1,8 +1,11 @@
+using Hangfire;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Nucleus.Api.Jobs;
 using Nucleus.Application.FinderHub.Commands;
 using Nucleus.Application.FinderHub.Queries;
+using System.Text;
 
 namespace Nucleus.Api.Controllers;
 
@@ -18,6 +21,9 @@ namespace Nucleus.Api.Controllers;
 ///   POST /api/finder/steps/{stepId}/options        — add an option to a step
 ///   POST /api/finder/{id}/results                  — add a result
 ///   GET  /api/finder/{id}/analytics?days=30        — finder analytics
+///   GET  /api/finder/{id}/analytics/export?days=30 — analytics CSV download
+///   POST /api/finder/{id}/variants                 — create A/B variant (agency plan)
+///   GET  /api/finder/{id}/variants                 — list A/B variants
 ///
 /// UNAUTHENTICATED (embed widget):
 ///   GET  /api/finder/{embedToken}                  — get public config (steps + results)
@@ -186,6 +192,33 @@ public class FinderController(IMediator mediator) : ControllerBase
         }
     }
 
+    /// <summary>PUT /api/finder/results/{resultId} — update result conditions + display</summary>
+    [HttpPut("api/finder/results/{resultId:guid}")]
+    [Authorize]
+    [ProducesResponseType(200)]
+    [ProducesResponseType(400)]
+    [ProducesResponseType(404)]
+    public async Task<IActionResult> UpdateResult(
+        Guid resultId,
+        [FromBody] AddResultRequest req,
+        CancellationToken ct)
+    {
+        try
+        {
+            var result = await mediator.Send(
+                new UpdateFinderResultCommand(resultId, req.ProductKey, req.Headline,
+                    req.ConditionJson ?? "{}", req.Body, req.CtaLabel, req.CtaUrl), ct);
+
+            return result is null
+                ? NotFound(new { success = false, error = "Result not found." })
+                : Ok(new { success = true, data = result });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { success = false, error = ex.Message });
+        }
+    }
+
     /// <summary>GET /api/finder/{id}/analytics?days=30 — finder analytics</summary>
     [HttpGet("api/finder/{id:guid}/analytics")]
     [Authorize]
@@ -202,6 +235,63 @@ public class FinderController(IMediator mediator) : ControllerBase
             return NotFound(new { success = false, error = "Finder not found." });
 
         return Ok(new { success = true, data = analytics });
+    }
+
+    /// <summary>GET /api/finder/{id}/analytics/export?days=30 — CSV download</summary>
+    [HttpGet("api/finder/{id:guid}/analytics/export")]
+    [Authorize]
+    [ProducesResponseType(200)]
+    [ProducesResponseType(404)]
+    public async Task<IActionResult> ExportAnalyticsCsv(
+        Guid id,
+        [FromQuery] int days = 30,
+        CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new ExportFinderAnalyticsCsvQuery(id, days), ct);
+
+        if (result is null)
+            return NotFound(new { success = false, error = "Finder not found." });
+
+        var (fileName, csv) = result.Value;
+        var bytes = Encoding.UTF8.GetBytes(csv);
+        return File(bytes, "text/csv", fileName);
+    }
+
+    /// <summary>POST /api/finder/{id}/variants — create A/B variant (agency plan)</summary>
+    [HttpPost("api/finder/{id:guid}/variants")]
+    [Authorize]
+    [ProducesResponseType(201)]
+    [ProducesResponseType(400)]
+    public async Task<IActionResult> CreateVariant(
+        Guid id,
+        [FromBody] CreateVariantRequest req,
+        CancellationToken ct)
+    {
+        try
+        {
+            var variant = await mediator.Send(
+                new CreateFinderVariantCommand(id, req.Name, req.IntroTextOverride, req.Weight ?? 50), ct);
+
+            return Created($"api/finder/{id}/variants",
+                new { success = true, data = variant });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { success = false, error = ex.Message });
+        }
+    }
+
+    /// <summary>GET /api/finder/{id}/variants — list A/B variants</summary>
+    [HttpGet("api/finder/{id:guid}/variants")]
+    [Authorize]
+    [ProducesResponseType(200)]
+    [ProducesResponseType(404)]
+    public async Task<IActionResult> GetVariants(
+        Guid id,
+        CancellationToken ct = default)
+    {
+        var variants = await mediator.Send(new GetFinderVariantsQuery(id), ct);
+        return Ok(new { success = true, data = variants });
     }
 
     // ─── Public / Embed Endpoints (No Auth) ──────────────────────────────
@@ -263,7 +353,10 @@ public class FinderController(IMediator mediator) : ControllerBase
                     embedToken,
                     req.AnswersJson,
                     req.SessionToken,
-                    req.IsComplete ?? false), ct);
+                    req.IsComplete ?? false,
+                    req.LeadName,
+                    req.LeadEmail,
+                    req.LeadPhone), ct);
 
             return Ok(new { success = true, data = session });
         }
@@ -273,7 +366,7 @@ public class FinderController(IMediator mediator) : ControllerBase
         }
     }
 
-    /// <summary>POST /api/finder/{embedToken}/convert — record CTA conversion</summary>
+    /// <summary>POST /api/finder/{embedToken}/convert — record CTA conversion + enqueue GHL lead capture</summary>
     [HttpPost("api/finder/{embedToken}/convert")]
     [AllowAnonymous]
     [ProducesResponseType(200)]
@@ -286,12 +379,16 @@ public class FinderController(IMediator mediator) : ControllerBase
     {
         try
         {
-            var found = await mediator.Send(
+            var sessionId = await mediator.Send(
                 new RecordFinderConversionCommand(embedToken, req.SessionToken), ct);
 
-            return found
-                ? Ok(new { success = true, message = "Conversion recorded." })
-                : NotFound(new { success = false, error = "Session not found." });
+            if (sessionId is null)
+                return NotFound(new { success = false, error = "Session not found." });
+
+            // Enqueue GHL contact creation — runs outside HTTP context via Hangfire
+            BackgroundJob.Enqueue<GhlLeadCaptureJob>(j => j.CaptureAsync(sessionId.Value, CancellationToken.None));
+
+            return Ok(new { success = true, message = "Conversion recorded." });
         }
         catch (InvalidOperationException ex)
         {
@@ -331,6 +428,14 @@ public record AddResultRequest(
 public record RecordSessionRequest(
     string AnswersJson,
     string? SessionToken = null,
-    bool? IsComplete = null);
+    bool? IsComplete = null,
+    string? LeadName = null,
+    string? LeadEmail = null,
+    string? LeadPhone = null);
 
 public record ConvertRequest(string SessionToken);
+
+public record CreateVariantRequest(
+    string Name,
+    string? IntroTextOverride = null,
+    int? Weight = null);

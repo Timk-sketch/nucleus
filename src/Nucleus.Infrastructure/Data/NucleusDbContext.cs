@@ -60,6 +60,9 @@ public class NucleusDbContext(
     public DbSet<FinderSession> FinderSessions => Set<FinderSession>();
     public DbSet<FinderAnalytics> FinderAnalytics => Set<FinderAnalytics>();
 
+    // Sprint 32 — Finder Hub v2
+    public DbSet<FinderVariant> FinderVariants => Set<FinderVariant>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -534,11 +537,15 @@ public class NucleusDbContext(
             e.Property(f => f.IntroText).HasMaxLength(1000);
             e.Property(f => f.Status).HasMaxLength(50).HasDefaultValue("draft");
             e.Property(f => f.EmbedToken).HasMaxLength(100).IsRequired();
+            e.Property(f => f.CustomCss).HasColumnType("text");
+            e.Property(f => f.LogoUrl).HasMaxLength(500);
+            e.Property(f => f.PrimaryColorOverride).HasMaxLength(20);
             e.HasOne(f => f.Brand).WithMany().HasForeignKey(f => f.BrandId);
             e.HasMany(f => f.Steps).WithOne(s => s.Finder).HasForeignKey(s => s.FinderId);
             e.HasMany(f => f.Results).WithOne(r => r.Finder).HasForeignKey(r => r.FinderId);
             e.HasMany(f => f.Sessions).WithOne(s => s.Finder).HasForeignKey(s => s.FinderId);
             e.HasMany(f => f.Analytics).WithOne(a => a.Finder).HasForeignKey(a => a.FinderId);
+            e.HasMany(f => f.Variants).WithOne(v => v.Finder).HasForeignKey(v => v.FinderId);
         });
 
         builder.Entity<FinderStep>(e =>
@@ -596,7 +603,11 @@ public class NucleusDbContext(
             e.Property(s => s.SessionToken).HasMaxLength(100).IsRequired();
             e.Property(s => s.AnswersJson).HasColumnType("jsonb").HasDefaultValue("{}");
             e.Property(s => s.ResultKey).HasMaxLength(200);
+            e.Property(s => s.LeadName).HasMaxLength(200);
+            e.Property(s => s.LeadEmail).HasMaxLength(300);
+            e.Property(s => s.LeadPhone).HasMaxLength(50);
             e.HasOne(s => s.Finder).WithMany(f => f.Sessions).HasForeignKey(s => s.FinderId);
+            e.HasOne(s => s.Variant).WithMany().HasForeignKey(s => s.VariantId).IsRequired(false);
         });
 
         builder.Entity<FinderAnalytics>(e =>
@@ -612,7 +623,18 @@ public class NucleusDbContext(
                 .IsRequired(false);
         });
 
-        // ── End Sprint 30 ─────────────────────────────────────────────────
+        builder.Entity<FinderVariant>(e =>
+        {
+            e.ToTable("finder_variants");
+            e.HasKey(v => v.Id);
+            e.HasIndex(v => v.TenantId);
+            e.HasIndex(v => new { v.TenantId, v.FinderId });
+            e.Property(v => v.Name).HasMaxLength(100).IsRequired();
+            e.Property(v => v.IntroTextOverride).HasMaxLength(1000);
+            e.HasOne(v => v.Finder).WithMany(f => f.Variants).HasForeignKey(v => v.FinderId);
+        });
+
+        // ── End Sprint 30 / Sprint 32 ─────────────────────────────────────
 
         // Global tenant query filter on all TenantEntity subclasses
         var tenantId = tenantService.TenantId;

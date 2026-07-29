@@ -52,5 +52,8 @@ public interface INucleusDbContext
     DbSet<FinderSession> FinderSessions { get; }
     DbSet<FinderAnalytics> FinderAnalytics { get; }
 
+    // Sprint 32 — Finder Hub v2
+    DbSet<FinderVariant> FinderVariants { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

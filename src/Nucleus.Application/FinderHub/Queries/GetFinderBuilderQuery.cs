@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Nucleus.Application.Common.Interfaces;
+using Nucleus.Application.FinderHub.Commands;
 using Nucleus.Application.FinderHub.DTOs;
 
 namespace Nucleus.Application.FinderHub.Queries;
@@ -56,6 +57,12 @@ public class GetFinderBuilderHandler : IRequestHandler<GetFinderBuilderQuery, Fi
             .Where(r => r.FinderId == finder.Id)
             .ToListAsync(cancellationToken);
 
+        // Load variants
+        var variants = await _db.FinderVariants
+            .Where(v => v.FinderId == finder.Id)
+            .OrderByDescending(v => v.Weight)
+            .ToListAsync(cancellationToken);
+
         return new FinderBuilderDto
         {
             Id = finder.Id,
@@ -66,6 +73,10 @@ public class GetFinderBuilderHandler : IRequestHandler<GetFinderBuilderQuery, Fi
             Status = finder.Status,
             PublishedAt = finder.PublishedAt,
             EmbedToken = finder.EmbedToken,
+            WhiteLabelEnabled = finder.WhiteLabelEnabled,
+            CustomCss = finder.CustomCss,
+            LogoUrl = finder.LogoUrl,
+            PrimaryColorOverride = finder.PrimaryColorOverride,
             CreatedAt = finder.CreatedAt,
             UpdatedAt = finder.UpdatedAt,
             Steps = steps.Select(s => new FinderStepDto
@@ -100,6 +111,15 @@ public class GetFinderBuilderHandler : IRequestHandler<GetFinderBuilderQuery, Fi
                 Body = r.Body,
                 CtaLabel = r.CtaLabel,
                 CtaUrl = r.CtaUrl,
+            }).ToList(),
+            Variants = variants.Select(v => new FinderVariantDto
+            {
+                Id = v.Id,
+                FinderId = v.FinderId,
+                Name = v.Name,
+                IntroTextOverride = v.IntroTextOverride,
+                Weight = v.Weight,
+                CreatedAt = v.CreatedAt,
             }).ToList(),
         };
     }

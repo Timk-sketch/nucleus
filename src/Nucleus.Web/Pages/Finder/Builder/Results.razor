@@ -1,21 +1,269 @@
 @page "/finder/builder/results"
 @attribute [Authorize]
 @layout FinderLayout
+@inject HttpClient Http
 @inject NavigationManager Nav
+@using System.Text.Json
 
-<PageTitle>Builder Results — Finder Hub — Nucleus</PageTitle>
+<PageTitle>Result Conditions — Finder Hub — Nucleus</PageTitle>
 
-<div class="page-header">
-    <div>
-        <h1 class="page-title">Builder — Results</h1>
-        <p class="page-subtitle">Use the main <a href="/finder/builder">Builder</a> page to add and manage results. This page redirects there.</p>
+@if (_loading)
+{
+    <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+}
+else if (_finder == null)
+{
+    <div class="empty-state">
+        Select a finder from the <a href="/finder">Finders list</a> to manage results.
     </div>
-</div>
+}
+else
+{
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Result Conditions</h1>
+            <p class="page-subtitle">@_finder.Name — define which answers map to each result.</p>
+        </div>
+        <a class="btn-secondary" href="/finder/builder?id=@_finder.Id">Back to Builder</a>
+    </div>
+
+    @if (_error != null) { <div class="alert-error">@_error</div> }
+    @if (_successMsg != null) { <div class="alert-success">@_successMsg</div> }
+
+    @if (_finder.Results.Count == 0)
+    {
+        <div class="empty-state" style="margin-top:24px;">
+            No results yet. <a href="/finder/builder?id=@_finder.Id">Add a result</a> first.
+        </div>
+    }
+    else
+    {
+        @foreach (var result in _finder.Results)
+        {
+            var editor = _editors[result.Id];
+            <div class="card" style="margin-bottom:20px;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+                    <div>
+                        <div style="font-size:11px;color:var(--color-muted);">@result.ProductKey</div>
+                        <div style="font-weight:600;font-size:15px;margin-top:2px;">@result.Headline</div>
+                    </div>
+                    <button class="btn-hub btn-sm" @onclick="() => SaveResult(result.Id)" disabled="@editor.Saving">
+                        @(editor.Saving ? "Saving…" : "Save")
+                    </button>
+                </div>
+
+                @if (editor.Error != null)
+                {
+                    <div class="alert-error" style="margin-bottom:12px;font-size:12px;">@editor.Error</div>
+                }
+
+                <!-- Condition rows -->
+                <div style="margin-bottom:12px;">
+                    <div style="font-size:12px;font-weight:600;margin-bottom:8px;">Match Conditions</div>
+                    <p style="font-size:12px;color:var(--color-muted);margin-bottom:10px;">
+                        All conditions must match. Leave empty for catch-all (fallback result).
+                    </p>
+
+                    @foreach (var cond in editor.Conditions)
+                    {
+                        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+                            <select class="form-input" style="flex:1;" value="@cond.StepOrder"
+                                    @onchange="e => OnStepChanged(editor, cond, e.Value?.ToString())">
+                                <option value="">— select step —</option>
+                                @foreach (var s in _finder.Steps.OrderBy(s => s.StepOrder))
+                                {
+                                    <option value="@s.StepOrder">Step @s.StepOrder: @s.QuestionText</option>
+                                }
+                            </select>
+                            <select class="form-input" style="flex:1;" value="@cond.OptionValue"
+                                    @onchange="e => cond.OptionValue = Convert.ToString(e.Value) ?? string.Empty">
+                                <option value="">— select option —</option>
+                                @if (cond.StepOrder != null)
+                                {
+                                    var step = _finder.Steps.FirstOrDefault(s => s.StepOrder.ToString() == cond.StepOrder);
+                                    if (step != null)
+                                    {
+                                        @foreach (var opt in step.Options.OrderBy(o => o.SortOrder))
+                                        {
+                                            <option value="@opt.Value">@opt.Label (@opt.Value)</option>
+                                        }
+                                    }
+                                }
+                            </select>
+                            <button class="btn-sm btn-sm--ghost" style="color:var(--color-error);"
+                                    @onclick="() => editor.Conditions.Remove(cond)">✕</button>
+                        </div>
+                    }
+
+                    <button class="btn-sm" @onclick="() => editor.Conditions.Add(new ConditionRow())">
+                        + Add Condition
+                    </button>
+                </div>
+
+                <!-- Generated JSON preview -->
+                <div style="margin-top:12px;">
+                    <div style="font-size:11px;color:var(--color-muted);margin-bottom:4px;">Generated ConditionJson</div>
+                    <code style="display:block;font-size:11px;background:var(--color-surface-2);padding:8px;border-radius:4px;">
+                        @BuildConditionJson(editor)
+                    </code>
+                </div>
+            </div>
+        }
+    }
+}
 
 @code {
-    protected override void OnInitialized()
+    [SupplyParameterFromQuery] private string? Id { get; set; }
+
+    private FinderData? _finder;
+    private bool _loading = true;
+    private string? _error;
+    private string? _successMsg;
+    private Dictionary<Guid, ResultEditor> _editors = [];
+
+    protected override async Task OnInitializedAsync()
     {
-        // Redirect to the main builder page
-        Nav.NavigateTo("/finder/builder");
+        if (Guid.TryParse(Id, out var finderId))
+            await LoadFinder(finderId);
+        else
+            _loading = false;
     }
+
+    private async Task LoadFinder(Guid id)
+    {
+        _loading = true; _error = null;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<FinderData>>($"api/finder/{id}/builder");
+            _finder = resp?.Data;
+            if (_finder != null)
+            {
+                _editors = _finder.Results.ToDictionary(r => r.Id, r => new ResultEditor(r));
+            }
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private static void OnStepChanged(ResultEditor editor, ConditionRow cond, string? stepOrder)
+    {
+        cond.StepOrder = stepOrder;
+        cond.OptionValue = "";
+    }
+
+    private static string BuildConditionJson(ResultEditor editor)
+    {
+        var dict = new Dictionary<string, string>();
+        foreach (var c in editor.Conditions)
+        {
+            if (!string.IsNullOrEmpty(c.StepOrder) && !string.IsNullOrEmpty(c.OptionValue))
+                dict[c.StepOrder] = c.OptionValue;
+        }
+        return dict.Count == 0 ? "{}" : JsonSerializer.Serialize(dict);
+    }
+
+    private async Task SaveResult(Guid resultId)
+    {
+        if (_finder is null) return;
+        var editor = _editors[resultId];
+        var original = _finder.Results.First(r => r.Id == resultId);
+        editor.Saving = true; editor.Error = null; _successMsg = null;
+
+        try
+        {
+            var conditionJson = BuildConditionJson(editor);
+            var resp = await Http.PutAsJsonAsync($"api/finder/results/{resultId}", new
+            {
+                ProductKey = original.ProductKey,
+                Headline = original.Headline,
+                ConditionJson = conditionJson,
+                Body = original.Body,
+                CtaLabel = original.CtaLabel,
+                CtaUrl = original.CtaUrl,
+            });
+
+            if (resp.IsSuccessStatusCode)
+            {
+                _successMsg = $"Saved conditions for '{original.Headline}'.";
+                await LoadFinder(_finder.Id);
+            }
+            else
+            {
+                var err = await resp.Content.ReadFromJsonAsync<ErrorResp>();
+                editor.Error = err?.Error ?? "Save failed.";
+            }
+        }
+        catch (Exception ex) { editor.Error = ex.Message; }
+        finally { editor.Saving = false; }
+    }
+
+    // ── DTOs ─────────────────────────────────────────────────────────────────
+
+    private class FinderData
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public List<StepData> Steps { get; set; } = [];
+        public List<ResultData> Results { get; set; } = [];
+    }
+
+    private class StepData
+    {
+        public Guid Id { get; set; }
+        public int StepOrder { get; set; }
+        public string QuestionText { get; set; } = "";
+        public string StepType { get; set; } = "";
+        public List<OptionData> Options { get; set; } = [];
+    }
+
+    private class OptionData
+    {
+        public Guid Id { get; set; }
+        public string Label { get; set; } = "";
+        public string Value { get; set; } = "";
+        public int SortOrder { get; set; }
+    }
+
+    private class ResultData
+    {
+        public Guid Id { get; set; }
+        public string ProductKey { get; set; } = "";
+        public string Headline { get; set; } = "";
+        public string? Body { get; set; }
+        public string? CtaLabel { get; set; }
+        public string? CtaUrl { get; set; }
+        public string ConditionJson { get; set; } = "{}";
+    }
+
+    private class ConditionRow
+    {
+        public string? StepOrder { get; set; }
+        public string OptionValue { get; set; } = "";
+    }
+
+    private class ResultEditor
+    {
+        public List<ConditionRow> Conditions { get; } = [];
+        public bool Saving { get; set; }
+        public string? Error { get; set; }
+
+        public ResultEditor(ResultData result)
+        {
+            try
+            {
+                var doc = JsonDocument.Parse(result.ConditionJson);
+                foreach (var prop in doc.RootElement.EnumerateObject())
+                {
+                    var val = prop.Value.ValueKind == JsonValueKind.Array
+                        ? prop.Value.EnumerateArray().FirstOrDefault().GetString() ?? ""
+                        : prop.Value.GetString() ?? "";
+                    Conditions.Add(new ConditionRow { StepOrder = prop.Name, OptionValue = val });
+                }
+            }
+            catch { /* malformed JSON — start empty */ }
+        }
+    }
+
+    private record ApiWrapper<T>(bool Success, T? Data);
+    private record ErrorResp(string? Error);
 }

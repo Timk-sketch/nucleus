@@ -1,110 +1,77 @@
-# Implementation Plan: Sprint 31 — Wiring Phase
+# Implementation Plan: Sprint 32 — Finder Hub v2
 
 ## Context
-Replace stubs with real APIs (Claude + fal.ai Flux), add ITenantPlanService enforcement, build missing GET/PUT /api/studio/pages/{id}, Video Library page.
+GHL lead capture on conversion, A/B variant system (agency), CSV analytics export, white-label embed (agency), visual condition editor in Results builder.
 
-## Changes
+## Migration: AddFinderV2
+- **File**: `src/Nucleus.Infrastructure/Migrations/20260728_FinderV2.cs` (new)
+- finder_sessions: + lead_name text, lead_email text, lead_phone text, variant_id uuid nullable
+- finders: + white_label_enabled bool default false, custom_css text, logo_url text, primary_color_override text
+- New table: finder_variants (id, tenant_id, finder_id, name, intro_text_override, weight int default 50, created_at, updated_at)
 
-### 1. IClaudeService — new interface
-- **File**: `src/Nucleus.Application/Common/Interfaces/IClaudeService.cs` (new)
-- **Change**: `Task<string> GenerateAsync(string systemPrompt, string userPrompt, string model, int maxTokens)`
+## Domain
+- `src/Nucleus.Domain/Entities/FinderSession.cs` — + LeadName?, LeadEmail?, LeadPhone?, VariantId?, Variant nav
+- `src/Nucleus.Domain/Entities/Finder.cs` — + WhiteLabelEnabled, CustomCss?, LogoUrl?, PrimaryColorOverride?, Variants nav
+- `src/Nucleus.Domain/Entities/FinderVariant.cs` (new) — TenantEntity; FinderId, Name, IntroTextOverride?, Weight
 
-### 2. ClaudeService — implementation
-- **File**: `src/Nucleus.Infrastructure/Services/ClaudeService.cs` (new)
-- **Change**: Named HttpClient "anthropic" → POST `https://api.anthropic.com/v1/messages`; headers: `x-api-key`, `anthropic-version: 2023-06-01`; parse `content[0].text`
-- **Register**: `Program.cs` — `AddHttpClient("anthropic")` + `AddScoped<IClaudeService, ClaudeService>()`
+## Application
+- `src/Nucleus.Application/FinderHub/Commands/RecordFinderSessionCommand.cs`
+  - + LeadName?, LeadEmail?, LeadPhone? params; weighted variant assignment on new session; store lead fields
+- `src/Nucleus.Application/FinderHub/Commands/RecordFinderConversionCommand.cs`
+  - After SaveChanges: enqueue GhlLeadCaptureJob via IBackgroundJobService (only if brand has GhlApiKey)
+- `src/Nucleus.Application/FinderHub/Commands/CreateFinderVariantCommand.cs` (new) — plan gate: agency only
+- `src/Nucleus.Application/FinderHub/Queries/GetFinderVariantsQuery.cs` (new)
+- `src/Nucleus.Application/FinderHub/Queries/GetFinderAnalyticsQuery.cs` — + variant breakdown from sessions grouped by VariantId
+- `src/Nucleus.Application/FinderHub/DTOs/FinderAnalyticsDto.cs` — + List<VariantBreakdownDto> Variants
+- `src/Nucleus.Application/FinderHub/Queries/ExportFinderAnalyticsCsvQuery.cs` (new) — returns string CSV
+- `src/Nucleus.Application/FinderHub/DTOs/PublicFinderDto.cs` — + WhiteLabelEnabled, CustomCss?, LogoUrl?, PrimaryColorOverride?, AssignedVariantId?
+- `src/Nucleus.Application/FinderHub/Queries/GetPublicFinderQuery.cs` — extend to return white-label fields
+- `src/Nucleus.Application/FinderHub/DTOs/FinderBuilderDto.cs` — + white-label fields + List<FinderVariantDto> Variants
 
-### 3. IImageGenerationService — new interface
-- **File**: `src/Nucleus.Application/Common/Interfaces/IImageGenerationService.cs` (new)
-- **Change**: `Task<string> GenerateImageAsync(string prompt, int width, int height)` returns image URL
+## Infrastructure
+- `src/Nucleus.Infrastructure/Data/NucleusDbContext.cs` — + DbSet<FinderVariant>; configure FinderVariant entity
+- `src/Nucleus.Api/Jobs/GhlLeadCaptureJob.cs` (new) — Hangfire job: load session+brand, POST /v1/contacts to GHL; reuses "ghl" HttpClient
 
-### 4. FalAiService — implementation
-- **File**: `src/Nucleus.Infrastructure/Services/FalAiService.cs` (new)
-- **Change**: POST `https://fal.run/fal-ai/flux/schnell`; `Authorization: Key {FAL_KEY}`; parse `images[0].url`; throw if FAL_KEY missing
-- **Register**: `Program.cs` — `AddHttpClient("falai")` + `AddScoped<IImageGenerationService, FalAiService>()`
+## API
+- `src/Nucleus.Api/Controllers/FinderController.cs`
+  - RecordSession request model: + LeadName?, LeadEmail?, LeadPhone?
+  - + GET /api/finder/{id}/analytics/export?days= → CSV file response
+  - + POST /api/finder/{id}/variants → CreateFinderVariantCommand
+  - + GET /api/finder/{id}/variants → GetFinderVariantsQuery
 
-### 5. ITenantPlanService + TenantPlanService
-- **File**: `src/Nucleus.Application/Common/Interfaces/ITenantPlanService.cs` (new)
-- **File**: `src/Nucleus.Infrastructure/Multitenancy/TenantPlanService.cs` (new)
-- **Change**: `IsFeatureAllowed(feature)` checks plan limits: starter={content_generation:5/mo, design_generation:3/mo, image_generation:0}; pro/agency=unlimited
-- **Register**: `Program.cs` — `AddScoped<ITenantPlanService, TenantPlanService>()`
-
-### 6. GenerateContentHandler — wire Claude + plan service
-- **File**: `src/Nucleus.Application/ContentHub/Commands/GenerateContentCommand.cs:44`
-- **Change**: Inject `IClaudeService` + `ITenantPlanService`; replace manual plan check with `_plan.IsFeatureAllowed("content_generation")`; replace `SimulateContentGeneration()` with real `_claude.GenerateAsync()`
-
-### 7. GenerateDesignHandler — wire Claude + plan service
-- **File**: `src/Nucleus.Application/StudioHub/Commands/GenerateDesignCommand.cs:54`
-- **Change**: Inject `IClaudeService` + `ITenantPlanService`; replace `GenerateHtmlScaffold()` with Claude call; plan gate: design_generation pro+
-
-### 8. GenerateImageHandler — wire fal.ai + plan service
-- **File**: `src/Nucleus.Application/StudioHub/Commands/GenerateImageCommand.cs:46`
-- **Change**: Inject `IImageGenerationService` + `ITenantPlanService`; replace picsum URL with `_imageGen.GenerateImageAsync()`; plan gate: agency only
-
-### 9. GetWebsitePageQuery — new
-- **File**: `src/Nucleus.Application/StudioHub/Queries/GetWebsitePageQuery.cs` (new)
-- **Change**: Returns `WebsitePageDto?` by id scoped to TenantId; follows `GetPageLibraryQuery.cs` pattern
-
-### 10. UpdateWebsitePageCommand — new
-- **File**: `src/Nucleus.Application/StudioHub/Commands/UpdateWebsitePageCommand.cs` (new)
-- **Change**: Updates title, pageType, htmlContent, seoTitle, metaDescription, ogImage, schemaJson; slug NOT updatable; verifies TenantId ownership
-
-### 11. StudioController — GET/{id} + PUT/{id}
-- **File**: `src/Nucleus.Api/Controllers/StudioController.cs:29`
-- **Change**: Add `GET /api/studio/pages/{id:guid}` + `PUT /api/studio/pages/{id:guid}` endpoints
-
-### 12. Editor.razor — wire load + save
-- **File**: `src/Nucleus.Web/Pages/Studio/Pages/Editor.razor`
-- **Change**: `LoadPageDetail()` calls `GET /api/studio/pages/{id}` and populates all fields; `Save()` on existing pages calls `PUT /api/studio/pages/{id}`
-
-### 13. GetVideoLibraryQuery + AddVideoAssetCommand — new
-- **File**: `src/Nucleus.Application/StudioHub/Queries/GetVideoLibraryQuery.cs` (new)
-- **File**: `src/Nucleus.Application/StudioHub/Commands/AddVideoAssetCommand.cs` (new)
-- **Reuses**: `VideoAsset` (DbContext:47), `VideoAssetDto` (StudioHub/DTOs/VideoAssetDto.cs)
-
-### 14. StudioController — video endpoints
-- **File**: `src/Nucleus.Api/Controllers/StudioController.cs`
-- **Change**: Add `GET /api/studio/videos?brandId=&page=&pageSize=` + `POST /api/studio/videos`
-
-### 15. Videos/Index.razor — new
-- **File**: `src/Nucleus.Web/Pages/Studio/Videos/Index.razor` (new)
-- **Change**: `@page "/studio/videos"` + `@layout StudioLayout`; list videos + add form; mirror Assets/Index.razor
-
-### 16. StudioLayout.razor — Videos nav
-- **File**: `src/Nucleus.Web/Layout/StudioLayout.razor`
-- **Change**: Add Videos `<NavLink href="/studio/videos">` after Asset Library
-
-## Railway env vars to add
-- `ANTHROPIC_API_KEY`
-- `FAL_KEY`
+## Blazor
+- `src/Nucleus.Web/Pages/Finder/Builder/Index.razor` — + Variants panel (agency gate) with weight sliders + add variant modal
+- `src/Nucleus.Web/Pages/Finder/Builder/Results.razor` — replace Nav.NavigateTo redirect with visual condition editor (step/option dropdowns → generates ConditionJson)
+- `src/Nucleus.Web/Pages/Finder/Analytics/Index.razor` — + Export CSV button (calls export endpoint) + variant breakdown table
 
 ## Implementation Sequence
-1. IClaudeService + ClaudeService + IImageGenerationService + FalAiService (parallel)
-2. ITenantPlanService + TenantPlanService
-3. Register all in Program.cs
-4. GetWebsitePageQuery + UpdateWebsitePageCommand (parallel)
-5. Update GenerateContentHandler + GenerateDesignHandler + GenerateImageHandler (parallel, depends 1+2)
-6. StudioController — GET/{id} + PUT/{id} + video endpoints (depends 4)
-7. Editor.razor (depends 6)
-8. GetVideoLibraryQuery + AddVideoAssetCommand (parallel)
-9. Videos/Index.razor + StudioLayout.razor nav
-10. dotnet build + dotnet test
+1. Migration → `dotnet ef migrations add FinderV2`
+2. FinderVariant domain entity + NucleusDbContext registration
+3. FinderSession + Finder domain: add new properties
+4. GhlLeadCaptureJob
+5. RecordFinderSessionCommand (variant assignment + lead fields)
+6. RecordFinderConversionCommand (enqueue GHL job)
+7. CreateFinderVariantCommand + GetFinderVariantsQuery
+8. GetFinderAnalyticsQuery + ExportFinderAnalyticsCsvQuery + DTOs
+9. GetPublicFinderQuery + PublicFinderDto + FinderBuilderDto
+10. FinderController (4 changes/additions)
+11. Builder/Index.razor + Builder/Results.razor + Analytics/Index.razor
+12. `dotnet build && dotnet test`
 
 ## Edge Cases & Risks
-- ANTHROPIC_API_KEY/FAL_KEY missing: both services throw InvalidOperationException — visible in Railway deploy logs
-- Claude latency 5-15s: existing spinner in Editor.razor handles it
-- image_generation = agency only: return 402 with upgrade message for pro tenants
-- Slug is immutable: UpdateWebsitePageCommand must not accept slug changes
-- Anthropic response: parse content[0].text; non-"end_turn" stop_reason = throw
+- Variant weight: normalize weights so they always sum correctly (use proportional weighted random)
+- GHL job fire: only enqueue if finder's brand has GhlApiKey set (skip silently otherwise)
+- lead_capture StepType already a valid field value — no DB column needed, just new value string
+- Migration timestamp: use 20260728000001 (after last migration 20260721005306)
+- CSV export: use CsvHelper or manual StringBuilder; no new package — use StringBuilder
 
 ## Verification
 ```
-dotnet build Nucleus.sln   # 0 errors, 0 warnings
-dotnet test                # all tests pass
-git push origin main
-# POST /api/content/generate → real Claude HTML (no placeholder comment)
-# POST /api/studio/images/generate → fal.ai URL (no picsum.photos)
-# GET /api/studio/pages/{id} → 200 with full WebsitePageDto
-# PUT /api/studio/pages/{id} → 200, DB row updated
-# GET /studio/videos → Blazor page loads with video list
+dotnet ef migrations add FinderV2 --project src/Nucleus.Infrastructure --startup-project src/Nucleus.Api
+dotnet build Nucleus.sln && dotnet test
+git push origin master
+# POST /api/finder/{embedToken}/session with leadEmail → session.LeadEmail persisted
+# POST /api/finder/{embedToken}/convert → GHL job enqueued (check Hangfire dashboard)
+# GET /api/finder/{id}/analytics/export → CSV download
+# POST /api/finder/{id}/variants (agency JWT) → variant created; starter JWT → 403
 ```

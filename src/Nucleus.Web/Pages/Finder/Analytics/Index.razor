@@ -3,6 +3,7 @@
 @layout FinderLayout
 @inject HttpClient Http
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Analytics — Finder Hub — Nucleus</PageTitle>
 
@@ -11,11 +12,19 @@
         <h1 class="page-title">Analytics</h1>
         <p class="page-subtitle">Track starts, completions, and conversions for your finders.</p>
     </div>
-    <select class="form-input" style="width:auto;" @bind="_days" @bind:after="LoadAnalytics">
-        <option value="7">Last 7 days</option>
-        <option value="30">Last 30 days</option>
-        <option value="90">Last 90 days</option>
-    </select>
+    <div style="display:flex;gap:8px;align-items:center;">
+        <select class="form-input" style="width:auto;" @bind="_days" @bind:after="LoadAnalytics">
+            <option value="7">Last 7 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="90">Last 90 days</option>
+        </select>
+        @if (_selectedFinder != null)
+        {
+            <button class="btn-secondary" @onclick="ExportCsv" disabled="@_exporting">
+                @(_exporting ? "Exporting…" : "Export CSV")
+            </button>
+        }
+    </div>
 </div>
 
 @if (_brands.Count == 0 && !_loading)
@@ -139,6 +148,43 @@ else if (_selectedBrand != null)
             {
                 <div class="empty-state">No analytics data yet for this window.</div>
             }
+
+            <!-- Variant breakdown -->
+            @if (_analytics.Variants.Count > 0)
+            {
+                <h3 style="font-size:14px;font-weight:600;margin:24px 0 12px;">A/B Variant Breakdown</h3>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Variant</th>
+                                <th>Sessions</th>
+                                <th>Completions</th>
+                                <th>Conversions</th>
+                                <th>Completion %</th>
+                                <th>Conversion %</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var v in _analytics.Variants)
+                            {
+                                <tr>
+                                    <td style="font-weight:600;">@v.VariantName</td>
+                                    <td>@v.Sessions</td>
+                                    <td>@v.Completions</td>
+                                    <td style="color:#16a34a;font-weight:600;">@v.Conversions</td>
+                                    <td style="font-size:12px;">
+                                        @(v.CompletionRate.HasValue ? $"{v.CompletionRate.Value * 100:F1}%" : "—")
+                                    </td>
+                                    <td style="font-size:12px;">
+                                        @(v.ConversionRate.HasValue ? $"{v.ConversionRate.Value * 100:F1}%" : "—")
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
         }
     }
 }
@@ -150,6 +196,7 @@ else if (_selectedBrand != null)
     private FinderRow? _selectedFinder;
     private AnalyticsData? _analytics;
     private bool _loading;
+    private bool _exporting;
     private string? _error;
     private int _days = 30;
 
@@ -202,6 +249,28 @@ else if (_selectedBrand != null)
         finally { _loading = false; }
     }
 
+    private async Task ExportCsv()
+    {
+        if (_selectedFinder is null) return;
+        _exporting = true;
+        try
+        {
+            var response = await Http.GetAsync(
+                $"api/finder/{_selectedFinder.Id}/analytics/export?days={_days}");
+            if (response.IsSuccessStatusCode)
+            {
+                var bytes = await response.Content.ReadAsByteArrayAsync();
+                var fileName = response.Content.Headers.ContentDisposition?.FileNameStar
+                    ?? response.Content.Headers.ContentDisposition?.FileName
+                    ?? $"finder-analytics-{_days}d.csv";
+                var base64 = Convert.ToBase64String(bytes);
+                await JS.InvokeVoidAsync("downloadFileFromBase64", base64, fileName, "text/csv");
+            }
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _exporting = false; }
+    }
+
     private static string StatusClass(string status) => status switch
     {
         "published" => "success",
@@ -233,6 +302,7 @@ else if (_selectedBrand != null)
         public double? CompletionRate { get; set; }
         public double? ConversionRate { get; set; }
         public List<DailyRow> DailyStats { get; set; } = [];
+        public List<VariantRow> Variants { get; set; } = [];
     }
 
     private class DailyRow
@@ -241,6 +311,17 @@ else if (_selectedBrand != null)
         public int Starts { get; set; }
         public int Completions { get; set; }
         public int Conversions { get; set; }
+    }
+
+    private class VariantRow
+    {
+        public Guid? VariantId { get; set; }
+        public string VariantName { get; set; } = "";
+        public int Sessions { get; set; }
+        public int Completions { get; set; }
+        public int Conversions { get; set; }
+        public double? CompletionRate { get; set; }
+        public double? ConversionRate { get; set; }
     }
 
     private record ApiWrapper<T>(bool Success, T? Data);

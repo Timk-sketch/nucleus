@@ -139,6 +139,38 @@ else
             }
         </div>
     </div>
+
+    <!-- A/B Variants panel -->
+    <div style="margin-top:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div>
+                <h3 style="font-size:14px;font-weight:600;">A/B Variants (@_finder.Variants.Count)</h3>
+                <p style="font-size:12px;color:var(--color-muted);margin-top:2px;">Agency plan · Weighted traffic split</p>
+            </div>
+            <button class="btn-sm" @onclick="ShowAddVariantModal">+ Add Variant</button>
+        </div>
+
+        @if (_finder.Variants.Count == 0)
+        {
+            <div class="empty-state" style="padding:16px;">No variants. Add a variant to run an A/B test.</div>
+        }
+        else
+        {
+            <div style="display:flex;flex-wrap:wrap;gap:12px;">
+                @foreach (var v in _finder.Variants)
+                {
+                    <div class="card" style="min-width:220px;flex:1;">
+                        <div style="font-weight:600;font-size:14px;">@v.Name</div>
+                        <div style="font-size:12px;color:var(--color-muted);margin-top:4px;">Weight: @v.Weight</div>
+                        @if (!string.IsNullOrEmpty(v.IntroTextOverride))
+                        {
+                            <div style="font-size:12px;color:var(--color-muted);margin-top:4px;">@v.IntroTextOverride</div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
 }
 
 <!-- Add Step Modal -->
@@ -164,6 +196,7 @@ else
                         <option value="text">Text Input</option>
                         <option value="number">Number</option>
                         <option value="date">Date</option>
+                        <option value="lead_capture">Lead Capture (Contact Form)</option>
                     </select>
                 </div>
                 <div class="form-field">
@@ -274,6 +307,41 @@ else
     </div>
 }
 
+<!-- Add Variant Modal -->
+@if (_showAddVariantModal)
+{
+    <div class="modal-backdrop" @onclick="() => _showAddVariantModal = false">
+        <div class="modal" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h3>Add A/B Variant</h3>
+                <button class="modal-close" @onclick="() => _showAddVariantModal = false">✕</button>
+            </div>
+            <div class="modal-body">
+                @if (_modalError != null) { <div class="alert-error" style="margin-bottom:12px;">@_modalError</div> }
+                <div class="form-field">
+                    <label class="form-label">Variant Name *</label>
+                    <input class="form-input" @bind="_variantName" placeholder="e.g. Short intro" />
+                </div>
+                <div class="form-field">
+                    <label class="form-label">Intro Text Override</label>
+                    <textarea class="form-input" rows="2" @bind="_variantIntroText" placeholder="Override the finder's intro text for this variant..."></textarea>
+                </div>
+                <div class="form-field">
+                    <label class="form-label">Weight (1–100)</label>
+                    <input class="form-input" type="number" min="1" max="100" @bind="_variantWeight" />
+                    <span class="form-hint">Traffic is split proportionally by weight across all variants.</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" @onclick="() => _showAddVariantModal = false">Cancel</button>
+                <button class="btn-hub" @onclick="AddVariant" disabled="@_modalBusy">
+                    @(_modalBusy ? "Adding…" : "Add Variant")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [SupplyParameterFromQuery] private string? Id { get; set; }
 
@@ -297,6 +365,12 @@ else
     private string _optionValue = "";
     private string _optionDescription = "";
     private string _optionIconUrl = "";
+
+    // Variant modal
+    private bool _showAddVariantModal;
+    private string _variantName = "";
+    private string _variantIntroText = "";
+    private int _variantWeight = 50;
 
     // Result modal
     private bool _showAddResultModal;
@@ -470,6 +544,41 @@ else
         finally { _modalBusy = false; }
     }
 
+    private void ShowAddVariantModal()
+    {
+        _variantName = ""; _variantIntroText = ""; _variantWeight = 50;
+        _modalError = null; _showAddVariantModal = true;
+    }
+
+    private async Task AddVariant()
+    {
+        if (_finder is null || string.IsNullOrWhiteSpace(_variantName))
+        { _modalError = "Variant name is required."; return; }
+
+        _modalBusy = true; _modalError = null;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"api/finder/{_finder.Id}/variants", new
+            {
+                Name = _variantName.Trim(),
+                IntroTextOverride = string.IsNullOrWhiteSpace(_variantIntroText) ? null : _variantIntroText.Trim(),
+                Weight = _variantWeight,
+            });
+            if (resp.IsSuccessStatusCode)
+            {
+                _showAddVariantModal = false;
+                await LoadFinder(_finder.Id);
+            }
+            else
+            {
+                var err = await resp.Content.ReadFromJsonAsync<ErrorResp>();
+                _modalError = err?.Error ?? "Failed to add variant.";
+            }
+        }
+        catch (Exception ex) { _modalError = ex.Message; }
+        finally { _modalBusy = false; }
+    }
+
     private static string StatusClass(string status) => status switch
     {
         "published" => "success",
@@ -490,6 +599,17 @@ else
         public string EmbedToken { get; set; } = "";
         public List<StepData> Steps { get; set; } = [];
         public List<ResultData> Results { get; set; } = [];
+        public List<VariantData> Variants { get; set; } = [];
+        public bool WhiteLabelEnabled { get; set; }
+    }
+
+    private class VariantData
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string? IntroTextOverride { get; set; }
+        public int Weight { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
     }
 
     private class StepData

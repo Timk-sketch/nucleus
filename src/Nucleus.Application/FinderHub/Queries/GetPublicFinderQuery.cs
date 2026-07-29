@@ -66,6 +66,10 @@ public class GetPublicFinderHandler : IRequestHandler<GetPublicFinderQuery, Publ
             Slug = finder.Slug,
             IntroText = finder.IntroText,
             EmbedToken = finder.EmbedToken,
+            WhiteLabelEnabled = finder.WhiteLabelEnabled,
+            CustomCss = finder.WhiteLabelEnabled ? finder.CustomCss : null,
+            LogoUrl = finder.WhiteLabelEnabled ? finder.LogoUrl : null,
+            PrimaryColorOverride = finder.WhiteLabelEnabled ? finder.PrimaryColorOverride : null,
             Steps = steps.Select(s => new FinderStepDto
             {
                 Id = s.Id,

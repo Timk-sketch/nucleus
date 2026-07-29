@@ -31,9 +31,24 @@ public class Finder : TenantEntity
     /// </summary>
     public string EmbedToken { get; set; } = Guid.NewGuid().ToString("N");
 
+    // ── Sprint 32: White-label embed (agency plan) ─────────────────────────
+
+    /// <summary>Enables white-label mode — hides Nucleus branding from the embed widget.</summary>
+    public bool WhiteLabelEnabled { get; set; }
+
+    /// <summary>Custom CSS injected into the embed widget (agency plan only).</summary>
+    public string? CustomCss { get; set; }
+
+    /// <summary>Logo URL shown in the embed widget header when white-label is enabled.</summary>
+    public string? LogoUrl { get; set; }
+
+    /// <summary>Primary color override for the embed widget (hex, e.g. "#6366f1").</summary>
+    public string? PrimaryColorOverride { get; set; }
+
     // Navigation
     public ICollection<FinderStep> Steps { get; set; } = new List<FinderStep>();
     public ICollection<FinderResult> Results { get; set; } = new List<FinderResult>();
     public ICollection<FinderSession> Sessions { get; set; } = new List<FinderSession>();
     public ICollection<FinderAnalytics> Analytics { get; set; } = new List<FinderAnalytics>();
+    public ICollection<FinderVariant> Variants { get; set; } = new List<FinderVariant>();
 }

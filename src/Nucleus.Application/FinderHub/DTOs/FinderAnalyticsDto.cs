@@ -19,6 +19,9 @@ public class FinderAnalyticsDto
 
     /// <summary>Daily breakdown rows, ascending by date.</summary>
     public List<DailyFinderStats> DailyStats { get; set; } = [];
+
+    /// <summary>Per-variant breakdown (empty if no variants configured).</summary>
+    public List<VariantBreakdownDto> Variants { get; set; } = [];
 }
 
 public class DailyFinderStats
@@ -27,4 +30,15 @@ public class DailyFinderStats
     public int Starts { get; set; }
     public int Completions { get; set; }
     public int Conversions { get; set; }
+}
+
+public class VariantBreakdownDto
+{
+    public Guid? VariantId { get; set; }
+    public string VariantName { get; set; } = string.Empty;
+    public int Sessions { get; set; }
+    public int Completions { get; set; }
+    public int Conversions { get; set; }
+    public double? CompletionRate { get; set; }
+    public double? ConversionRate { get; set; }
 }

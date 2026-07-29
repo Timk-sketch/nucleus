@@ -9,11 +9,12 @@ namespace Nucleus.Application.FinderHub.Commands;
 /// Marks a FinderSession as converted (user clicked the CTA / became a lead).
 /// Uses the EmbedToken + SessionToken for unauthenticated access.
 /// Increments daily FinderAnalytics conversions.
-/// Returns true if session found and marked, false if not found.
+/// Returns the session Id on success (so the caller can enqueue GHL lead capture),
+/// or null if the session was not found.
 /// </summary>
 public record RecordFinderConversionCommand(
     string EmbedToken,
-    string SessionToken) : IRequest<bool>;
+    string SessionToken) : IRequest<Guid?>;
 
 public class RecordFinderConversionValidator : AbstractValidator<RecordFinderConversionCommand>
 {
@@ -24,7 +25,7 @@ public class RecordFinderConversionValidator : AbstractValidator<RecordFinderCon
     }
 }
 
-public class RecordFinderConversionHandler : IRequestHandler<RecordFinderConversionCommand, bool>
+public class RecordFinderConversionHandler : IRequestHandler<RecordFinderConversionCommand, Guid?>
 {
     private readonly INucleusDbContext _db;
 
@@ -33,7 +34,7 @@ public class RecordFinderConversionHandler : IRequestHandler<RecordFinderConvers
         _db = db;
     }
 
-    public async Task<bool> Handle(
+    public async Task<Guid?> Handle(
         RecordFinderConversionCommand request, CancellationToken cancellationToken)
     {
         // Resolve finder
@@ -44,7 +45,7 @@ public class RecordFinderConversionHandler : IRequestHandler<RecordFinderConvers
                 cancellationToken);
 
         if (finder is null)
-            return false;
+            return null;
 
         // Find the session
         var session = await _db.FinderSessions
@@ -54,11 +55,11 @@ public class RecordFinderConversionHandler : IRequestHandler<RecordFinderConvers
                 cancellationToken);
 
         if (session is null)
-            return false;
+            return null;
 
         // Idempotent — only convert once
         if (session.Converted)
-            return true;
+            return session.Id;
 
         session.Converted = true;
         session.UpdatedAt = DateTimeOffset.UtcNow;
@@ -88,6 +89,6 @@ public class RecordFinderConversionHandler : IRequestHandler<RecordFinderConvers
 
         await _db.SaveChangesAsync(cancellationToken);
 
-        return true;
+        return session.Id;
     }
 }

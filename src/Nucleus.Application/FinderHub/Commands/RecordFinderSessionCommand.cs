@@ -12,7 +12,7 @@ namespace Nucleus.Application.FinderHub.Commands;
 /// Uses the EmbedToken (no auth required) to identify the Finder.
 ///
 /// If SessionToken is provided and matches an existing session, updates AnswersJson.
-/// If SessionToken is null or unknown, creates a new session.
+/// If SessionToken is null or unknown, creates a new session with weighted A/B variant assignment.
 ///
 /// When IsComplete=true:
 ///   - Runs result matching against FinderResults
@@ -20,13 +20,17 @@ namespace Nucleus.Application.FinderHub.Commands;
 ///   - Increments FinderAnalytics completions for today
 ///
 /// Increments FinderAnalytics starts count when a new session is created.
+/// Lead fields (LeadName/LeadEmail/LeadPhone) are set when a lead_capture step is submitted.
 /// Returns the FinderSessionDto.
 /// </summary>
 public record RecordFinderSessionCommand(
     string EmbedToken,
     string AnswersJson,
     string? SessionToken = null,
-    bool IsComplete = false) : IRequest<FinderSessionDto>;
+    bool IsComplete = false,
+    string? LeadName = null,
+    string? LeadEmail = null,
+    string? LeadPhone = null) : IRequest<FinderSessionDto>;
 
 public class RecordFinderSessionValidator : AbstractValidator<RecordFinderSessionCommand>
 {
@@ -34,6 +38,10 @@ public class RecordFinderSessionValidator : AbstractValidator<RecordFinderSessio
     {
         RuleFor(x => x.EmbedToken).NotEmpty().MaximumLength(100);
         RuleFor(x => x.AnswersJson).NotEmpty().MaximumLength(8000);
+        RuleFor(x => x.LeadEmail).MaximumLength(300).EmailAddress()
+            .When(x => !string.IsNullOrEmpty(x.LeadEmail));
+        RuleFor(x => x.LeadName).MaximumLength(200).When(x => x.LeadName != null);
+        RuleFor(x => x.LeadPhone).MaximumLength(50).When(x => x.LeadPhone != null);
     }
 }
 
@@ -72,6 +80,9 @@ public class RecordFinderSessionHandler : IRequestHandler<RecordFinderSessionCom
 
         if (session is null)
         {
+            // Assign A/B variant via weighted random selection
+            var variantId = await AssignVariantAsync(finder.Id, cancellationToken);
+
             // Create new session
             session = new FinderSession
             {
@@ -79,6 +90,7 @@ public class RecordFinderSessionHandler : IRequestHandler<RecordFinderSessionCom
                 FinderId = finder.Id,
                 SessionToken = Guid.NewGuid().ToString("N"),
                 AnswersJson = request.AnswersJson,
+                VariantId = variantId,
             };
             _db.FinderSessions.Add(session);
 
@@ -92,6 +104,11 @@ public class RecordFinderSessionHandler : IRequestHandler<RecordFinderSessionCom
             session.AnswersJson = request.AnswersJson;
             session.UpdatedAt = DateTimeOffset.UtcNow;
         }
+
+        // Capture lead info from lead_capture step
+        if (!string.IsNullOrEmpty(request.LeadName))  session.LeadName  = request.LeadName;
+        if (!string.IsNullOrEmpty(request.LeadEmail)) session.LeadEmail = request.LeadEmail;
+        if (!string.IsNullOrEmpty(request.LeadPhone)) session.LeadPhone = request.LeadPhone;
 
         // Handle completion
         if (request.IsComplete && session.CompletedAt is null)
@@ -125,13 +142,34 @@ public class RecordFinderSessionHandler : IRequestHandler<RecordFinderSessionCom
         };
     }
 
+    /// <summary>Weighted random variant assignment. Returns null when no variants are defined.</summary>
+    private async Task<Guid?> AssignVariantAsync(Guid finderId, CancellationToken ct)
+    {
+        var variants = await _db.FinderVariants
+            .IgnoreQueryFilters()
+            .Where(v => v.FinderId == finderId)
+            .Select(v => new { v.Id, v.Weight })
+            .ToListAsync(ct);
+
+        if (variants.Count == 0) return null;
+
+        var totalWeight = variants.Sum(v => v.Weight);
+        if (totalWeight <= 0) return variants[0].Id;
+
+        var roll = Random.Shared.Next(0, totalWeight);
+        var cumulative = 0;
+        foreach (var v in variants)
+        {
+            cumulative += v.Weight;
+            if (roll < cumulative) return v.Id;
+        }
+
+        return variants[^1].Id;
+    }
+
     private async Task IncrementAnalyticsAsync(
-        Guid finderId,
-        Guid tenantId,
-        DateOnly date,
-        int starts,
-        int completions,
-        int conversions,
+        Guid finderId, Guid tenantId, DateOnly date,
+        int starts, int completions, int conversions,
         CancellationToken ct)
     {
         var row = await _db.FinderAnalytics

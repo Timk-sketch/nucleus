@@ -27,4 +27,19 @@ public class FinderSession : TenantEntity
 
     /// <summary>When the user completed all steps and saw a result (null if abandoned).</summary>
     public DateTimeOffset? CompletedAt { get; set; }
+
+    // ── Sprint 32: Lead capture + A/B variant ─────────────────────────────
+
+    /// <summary>Lead name captured via lead_capture step (null if not captured).</summary>
+    public string? LeadName { get; set; }
+
+    /// <summary>Lead email captured via lead_capture step.</summary>
+    public string? LeadEmail { get; set; }
+
+    /// <summary>Lead phone captured via lead_capture step.</summary>
+    public string? LeadPhone { get; set; }
+
+    /// <summary>A/B variant assigned to this session (null = no variant / control).</summary>
+    public Guid? VariantId { get; set; }
+    public FinderVariant? Variant { get; set; }
 }
