@@ -29,8 +29,8 @@ jobs:
           dotnet-version: "9.0.x"
       - uses: actions/setup-node@v5
         with:
-          node-version: "20"
-      - run: cd scripts/worker && npm install
+          node-version: "22"
+      - run: cd scripts && npm install
       - run: node scripts/maintenance/security-sweep.js
         env:
           SLACK_NUCLEUS_WEBHOOK: ${{ secrets.SLACK_NUCLEUS_WEBHOOK }}
@@ -42,8 +42,8 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
-          node-version: "20"
-      - run: cd scripts/worker && npm install
+          node-version: "22"
+      - run: cd scripts && npm install
       - run: node scripts/maintenance/feature-optimize.js
         env:
           SLACK_NUCLEUS_WEBHOOK: ${{ secrets.SLACK_NUCLEUS_WEBHOOK }}
@@ -62,9 +62,9 @@ jobs:
           dotnet-version: "9.0.x"
       - uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "22"
       - run: dotnet tool install -g dotnet-outdated-tool
-      - run: cd scripts/worker && npm install
+      - run: cd scripts && npm install
       - run: node scripts/maintenance/dep-update.js
         env:
           SLACK_NUCLEUS_WEBHOOK: ${{ secrets.SLACK_NUCLEUS_WEBHOOK }}
@@ -76,8 +76,8 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
-          node-version: "20"
-      - run: cd scripts/worker && npm install
+          node-version: "22"
+      - run: cd scripts && npm install
       - run: node scripts/maintenance/perf-audit.js
         env:
           SLACK_NUCLEUS_WEBHOOK: ${{ secrets.SLACK_NUCLEUS_WEBHOOK }}

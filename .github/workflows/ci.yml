@@ -24,7 +24,7 @@ jobs:
         run: dotnet build --no-restore -c Release
 
       - name: Test
-        run: dotnet test --no-build -c Release --verbosity normal --logger "github;report-warnings=false"
+        run: dotnet test --no-build -c Release --verbosity normal --logger GitHubActions
 
       - name: Docker build check
         run: docker build -f docker/Dockerfile . --tag nucleus:ci
