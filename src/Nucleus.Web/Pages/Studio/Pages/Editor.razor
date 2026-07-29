@@ -1,6 +1,7 @@
 @page "/studio/pages/editor"
 @attribute [Authorize]
 @layout StudioLayout
+@using System.Net.Http.Json
 @inject HttpClient Http
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -186,10 +187,27 @@ else
         _loading = true;
         try
         {
-            // Fetch page detail. Without a dedicated GET /api/studio/pages/{id} endpoint,
-            // we use the page editor as a creation/preview form.
-            // In v2 we will add GET /api/studio/pages/{id} for full page load.
-            _loading = false;
+            var resp = await Http.GetAsync($"api/studio/pages/{id}");
+            if (resp.IsSuccessStatusCode)
+            {
+                var envelope = await resp.Content.ReadFromJsonAsync<PageEnvelope>();
+                if (envelope?.Data is not null)
+                {
+                    _pageDetail = envelope.Data;
+                    _title = _pageDetail.Title;
+                    _slug = _pageDetail.Slug;
+                    _pageTypeSetting = _pageDetail.PageType;
+                    _htmlContent = _pageDetail.HtmlContent;
+                    _seoTitle = _pageDetail.SeoTitle;
+                    _metaDescription = _pageDetail.MetaDescription;
+                    _ogImage = _pageDetail.OgImage;
+                    _schemaJson = _pageDetail.SchemaJson;
+                }
+            }
+            else
+            {
+                _error = $"Page not found (HTTP {(int)resp.StatusCode}).";
+            }
         }
         catch (Exception ex)
         {
@@ -236,8 +254,26 @@ else
             }
             else
             {
-                // Full update endpoint planned for v2
-                _successMsg = "Changes saved. (Full update endpoint in v2 — use Page Manager to re-create.)";
+                if (_pageDetail is null) { _error = "Page not loaded."; return; }
+                var payload = new
+                {
+                    Title = _title.Trim(),
+                    PageType = _pageTypeSetting,
+                    HtmlContent = _htmlContent,
+                    SeoTitle = _seoTitle,
+                    MetaDescription = _metaDescription,
+                    OgImage = _ogImage,
+                    SchemaJson = _schemaJson,
+                };
+                var resp = await Http.PutAsJsonAsync($"api/studio/pages/{_pageDetail.Id}", payload);
+                if (resp.IsSuccessStatusCode)
+                {
+                    _successMsg = "Page saved!";
+                    _pageDetail.Title = _title.Trim();
+                    _pageDetail.UpdatedAt = DateTimeOffset.UtcNow;
+                }
+                else
+                    _error = $"Save failed: {await resp.Content.ReadAsStringAsync()}";
             }
         }
         catch (Exception ex) { _error = ex.Message; }
@@ -305,6 +341,12 @@ else
         "archived"  => "danger",
         _           => "muted",
     };
+
+    private class PageEnvelope
+    {
+        public bool Success { get; set; }
+        public PageDetail? Data { get; set; }
+    }
 
     private class PageDetail
     {

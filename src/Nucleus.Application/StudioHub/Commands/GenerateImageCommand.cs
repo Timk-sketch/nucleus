@@ -36,11 +36,19 @@ public class GenerateImageHandler : IRequestHandler<GenerateImageCommand, Design
 {
     private readonly INucleusDbContext _db;
     private readonly ICurrentTenantService _tenant;
+    private readonly IImageGenerationService _imageGen;
+    private readonly ITenantPlanService _plan;
 
-    public GenerateImageHandler(INucleusDbContext db, ICurrentTenantService tenant)
+    public GenerateImageHandler(
+        INucleusDbContext db,
+        ICurrentTenantService tenant,
+        IImageGenerationService imageGen,
+        ITenantPlanService plan)
     {
         _db = db;
         _tenant = tenant;
+        _imageGen = imageGen;
+        _plan = plan;
     }
 
     public async Task<DesignAssetDto> Handle(GenerateImageCommand request, CancellationToken cancellationToken)
@@ -54,10 +62,12 @@ public class GenerateImageHandler : IRequestHandler<GenerateImageCommand, Design
         if (brand is null)
             throw new InvalidOperationException("Brand not found for this tenant.");
 
-        // In production: call Flux API here and get back a real URL.
-        // For now, generate a placeholder URL via picsum (deterministic for the prompt hash).
-        var promptHash = Math.Abs(request.Prompt.GetHashCode()) % 1000;
-        var generatedUrl = $"https://picsum.photos/seed/{promptHash}/{request.Width}/{request.Height}";
+        // Plan gate: image_generation = agency only
+        if (!await _plan.IsFeatureAllowedAsync("image_generation", cancellationToken))
+            throw new InvalidOperationException("AI image generation requires an Agency plan.");
+
+        var generatedUrl = await _imageGen.GenerateImageAsync(
+            request.Prompt, request.Width, request.Height, cancellationToken);
 
         var fullPrompt = string.IsNullOrWhiteSpace(request.StyleHint)
             ? request.Prompt

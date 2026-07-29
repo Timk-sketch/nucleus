@@ -1,0 +1,253 @@
+@page "/studio/videos"
+@attribute [Authorize]
+@layout StudioLayout
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+<PageTitle>Video Library — Studio Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Video Library</h1>
+        <p class="page-subtitle">Store and manage brand video assets — YouTube, Vimeo, uploaded videos, and more.</p>
+    </div>
+    <button class="btn-hub" @onclick="() => _showAdd = true">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Add Video
+    </button>
+</div>
+
+@if (_brands.Count == 0 && !_loading)
+{
+    <div class="empty-state">No brands yet. <a href="/brands">Add a brand</a> to manage videos.</div>
+}
+else
+{
+    <div class="brand-pill-row">
+        @foreach (var b in _brands)
+        {
+            <button class="brand-pill @(b.Id == _activeBrandId ? "active" : "")"
+                    @onclick="() => SelectBrand(b.Id)">@b.Name</button>
+        }
+    </div>
+}
+
+@if (_error != null)
+{
+    <div class="alert-error" style="margin-bottom:16px;">@_error</div>
+}
+
+@if (_loading)
+{
+    <div class="loading-state"><div class="spinner spinner--lg"></div></div>
+}
+else if (_videos.Count == 0 && _activeBrandId != Guid.Empty)
+{
+    <div class="empty-state">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--color-muted);margin-bottom:12px;">
+            <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+        </svg>
+        <p>No videos yet. Add your first video asset.</p>
+    </div>
+}
+else
+{
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px;margin-top:16px;">
+        @foreach (var v in _videos)
+        {
+            <div class="card" style="padding:0;overflow:hidden;">
+                @if (v.ThumbnailUrl != null)
+                {
+                    <img src="@v.ThumbnailUrl" alt="@v.Name"
+                         style="width:100%;height:160px;object-fit:cover;" />
+                }
+                else
+                {
+                    <div style="width:100%;height:160px;background:var(--color-surface-alt);display:flex;align-items:center;justify-content:center;">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--color-muted);">
+                            <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                        </svg>
+                    </div>
+                }
+                <div style="padding:16px;">
+                    <h3 style="font-size:14px;font-weight:700;margin-bottom:4px;color:var(--color-text);">@v.Name</h3>
+                    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+                        <span class="status-badge status-badge--info" style="font-size:11px;">@v.Platform</span>
+                        @if (v.DurationSeconds.HasValue)
+                        {
+                            <span style="font-size:11px;color:var(--color-muted);">@FormatDuration(v.DurationSeconds.Value)</span>
+                        }
+                    </div>
+                    @if (v.Description != null)
+                    {
+                        <p style="font-size:12px;color:var(--color-muted);margin-bottom:8px;">@v.Description[..Math.Min(120, v.Description.Length)]@(v.Description.Length > 120 ? "…" : "")</p>
+                    }
+                    <a href="@v.Url" target="_blank" rel="noopener"
+                       class="btn-secondary" style="font-size:12px;padding:5px 10px;text-decoration:none;">
+                        Open &#8599;
+                    </a>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@if (_showAdd)
+{
+    <div class="modal-overlay" @onclick="() => _showAdd = false">
+        <div class="modal" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h2 class="modal-title">Add Video</h2>
+                <button class="modal-close" @onclick="() => _showAdd = false">&#x2715;</button>
+            </div>
+            <div class="modal-body">
+                @if (_addError != null)
+                {
+                    <div class="alert-error" style="margin-bottom:12px;">@_addError</div>
+                }
+                <div class="form-group">
+                    <label class="form-label">Name <span style="color:#ef4444;">*</span></label>
+                    <input type="text" class="form-input" @bind="_addName" placeholder="My Brand Video" />
+                </div>
+                <div class="form-group" style="margin-top:12px;">
+                    <label class="form-label">URL <span style="color:#ef4444;">*</span></label>
+                    <input type="url" class="form-input" @bind="_addUrl" placeholder="https://youtube.com/watch?v=..." />
+                </div>
+                <div class="form-group" style="margin-top:12px;">
+                    <label class="form-label">Platform</label>
+                    <select class="form-input" @bind="_addPlatform">
+                        <option value="youtube">YouTube</option>
+                        <option value="vimeo">Vimeo</option>
+                        <option value="tiktok">TikTok</option>
+                        <option value="instagram">Instagram</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-top:12px;">
+                    <label class="form-label">Thumbnail URL</label>
+                    <input type="url" class="form-input" @bind="_addThumbnail" placeholder="https://..." />
+                </div>
+                <div class="form-group" style="margin-top:12px;">
+                    <label class="form-label">Description</label>
+                    <textarea class="form-input" rows="2" @bind="_addDescription" placeholder="Brief description..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" @onclick="() => _showAdd = false">Cancel</button>
+                <button class="btn-hub" @onclick="AddVideo" disabled="@_saving">
+                    @(_saving ? "Adding…" : "Add Video")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private List<VideoItem> _videos = [];
+    private Guid _activeBrandId;
+    private bool _loading, _saving, _showAdd;
+    private string? _error, _addError;
+
+    // Add form
+    private string _addName = "", _addUrl = "", _addPlatform = "youtube";
+    private string? _addThumbnail, _addDescription;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBrands();
+    }
+
+    private async Task LoadBrands()
+    {
+        _loading = true;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<BrandsEnvelope>("api/v1/brands");
+            _brands = resp?.Data?.Select(b => new BrandItem(b.Id, b.Name)).ToList() ?? [];
+            if (_brands.Count > 0)
+                await SelectBrand(_brands[0].Id);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task SelectBrand(Guid brandId)
+    {
+        _activeBrandId = brandId;
+        _loading = true;
+        _error = null;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<VideoLibraryEnvelope>($"api/studio/videos?brandId={brandId}");
+            _videos = resp?.Data?.Videos?.Select(v => new VideoItem(
+                v.Id, v.Name, v.Url, v.Platform, v.ThumbnailUrl,
+                v.DurationSeconds, v.Description)).ToList() ?? [];
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task AddVideo()
+    {
+        _addError = null;
+        if (string.IsNullOrWhiteSpace(_addName)) { _addError = "Name is required."; return; }
+        if (string.IsNullOrWhiteSpace(_addUrl)) { _addError = "URL is required."; return; }
+
+        _saving = true;
+        try
+        {
+            var payload = new
+            {
+                BrandId = _activeBrandId,
+                Name = _addName.Trim(),
+                Url = _addUrl.Trim(),
+                Platform = _addPlatform,
+                ThumbnailUrl = string.IsNullOrWhiteSpace(_addThumbnail) ? null : _addThumbnail.Trim(),
+                Description = string.IsNullOrWhiteSpace(_addDescription) ? null : _addDescription.Trim(),
+            };
+            var resp = await Http.PostAsJsonAsync("api/studio/videos", payload);
+            if (resp.IsSuccessStatusCode)
+            {
+                _showAdd = false;
+                _addName = _addUrl = _addPlatform = "";
+                _addThumbnail = _addDescription = null;
+                _addPlatform = "youtube";
+                await SelectBrand(_activeBrandId);
+            }
+            else
+                _addError = $"Failed: {await resp.Content.ReadAsStringAsync()}";
+        }
+        catch (Exception ex) { _addError = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private static string FormatDuration(int seconds)
+    {
+        var ts = TimeSpan.FromSeconds(seconds);
+        return ts.Hours > 0
+            ? $"{ts.Hours}:{ts.Minutes:D2}:{ts.Seconds:D2}"
+            : $"{ts.Minutes}:{ts.Seconds:D2}";
+    }
+
+    private record BrandItem(Guid Id, string Name);
+    private record VideoItem(Guid Id, string Name, string Url, string Platform,
+        string? ThumbnailUrl, int? DurationSeconds, string? Description);
+
+    private class BrandsEnvelope { public List<BrandData>? Data { get; set; } }
+    private class BrandData { public Guid Id { get; set; } public string Name { get; set; } = ""; }
+    private class VideoLibraryEnvelope { public bool Success { get; set; } public VideoLibraryData? Data { get; set; } }
+    private class VideoLibraryData { public List<VideoData> Videos { get; set; } = []; }
+    private class VideoData
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string Url { get; set; } = "";
+        public string Platform { get; set; } = "other";
+        public string? ThumbnailUrl { get; set; }
+        public int? DurationSeconds { get; set; }
+        public string? Description { get; set; }
+    }
+}

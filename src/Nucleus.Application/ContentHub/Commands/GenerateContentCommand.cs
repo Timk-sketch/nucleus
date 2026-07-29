@@ -44,11 +44,19 @@ public class GenerateContentHandler : IRequestHandler<GenerateContentCommand, Ge
 {
     private readonly INucleusDbContext _db;
     private readonly ICurrentTenantService _tenant;
+    private readonly IClaudeService _claude;
+    private readonly ITenantPlanService _plan;
 
-    public GenerateContentHandler(INucleusDbContext db, ICurrentTenantService tenant)
+    public GenerateContentHandler(
+        INucleusDbContext db,
+        ICurrentTenantService tenant,
+        IClaudeService claude,
+        ITenantPlanService plan)
     {
         _db = db;
         _tenant = tenant;
+        _claude = claude;
+        _plan = plan;
     }
 
     public async Task<GenerateContentResult> Handle(
@@ -63,22 +71,16 @@ public class GenerateContentHandler : IRequestHandler<GenerateContentCommand, Ge
         if (brand is null)
             return new GenerateContentResult(false, null, "Brand not found.");
 
-        // Plan gate: starter = max 5 AI generations per month
-        var tenant = await _db.Tenants.AsNoTracking()
-            .FirstOrDefaultAsync(t => t.Id == _tenant.TenantId, cancellationToken);
-
-        if (tenant?.Plan == "starter")
+        // Plan gate via TenantPlanService
+        if (!await _plan.IsFeatureAllowedAsync("content_generation", cancellationToken))
         {
-            var monthStart = new DateTimeOffset(DateTimeOffset.UtcNow.Year, DateTimeOffset.UtcNow.Month, 1, 0, 0, 0, TimeSpan.Zero);
-            var monthlyCount = await _db.AiUsages
-                .CountAsync(u => u.TenantId == _tenant.TenantId
-                              && u.Feature == "content_generation"
-                              && u.CreatedAt >= monthStart, cancellationToken);
-
-            if (monthlyCount >= 5)
-                return new GenerateContentResult(false, null,
-                    "Starter plan is limited to 5 AI generations per month. Upgrade to Pro for unlimited.",
-                    PlanLimitReached: true);
+            var usageCount = await _plan.GetMonthlyUsageAsync("content_generation", cancellationToken);
+            var currentPlan = await _plan.GetPlanAsync(cancellationToken);
+            return new GenerateContentResult(false, null,
+                currentPlan == "starter"
+                    ? $"Starter plan is limited to 5 AI generations per month ({usageCount} used). Upgrade to Pro for unlimited."
+                    : "AI content generation is not available on your current plan.",
+                PlanLimitReached: true);
         }
 
         // Resolve keyword text if provided
@@ -110,11 +112,14 @@ public class GenerateContentHandler : IRequestHandler<GenerateContentCommand, Ge
             .Select(w => w.Word)
             .ToListAsync(cancellationToken);
 
-        // Generate content (simulated — real Claude API call would go here)
-        var generatedHtml = SimulateContentGeneration(
-            request.Title, keywordText, request.PageType,
-            request.WordCount, templateBody, bannedWords,
-            request.CustomPrompt, brand.Name);
+        // Generate content via Claude API
+        var systemPrompt = BuildSystemPrompt(brand.Name, bannedWords, templateBody);
+        var userPrompt = BuildUserPrompt(request, keywordText, brand.Name);
+        var generatedHtml = await _claude.GenerateAsync(
+            systemPrompt, userPrompt,
+            model: "claude-sonnet-4-6",
+            maxTokens: Math.Min(8000, request.WordCount * 8),
+            ct: cancellationToken);
 
         // Count words in generated HTML
         var wordCount = CountWords(generatedHtml);
@@ -131,8 +136,8 @@ public class GenerateContentHandler : IRequestHandler<GenerateContentCommand, Ge
             HtmlContent = generatedHtml,
             SeoTitle = request.Title,
             MetaDescription = $"Learn about {request.Title} — an in-depth guide for {brand.Name}.",
-            AiModel = "claude-3-5-sonnet-20241022",
-            AiPrompt = BuildPrompt(request, keywordText, templateBody),
+            AiModel = "claude-sonnet-4-6",
+            AiPrompt = BuildUserPrompt(request, keywordText, brand.Name),
             WordCount = wordCount,
         };
         _db.ContentPages.Add(page);
@@ -145,7 +150,7 @@ public class GenerateContentHandler : IRequestHandler<GenerateContentCommand, Ge
             Feature = "content_generation",
             TokensUsed = EstimateTokens(wordCount),
             CostUsd = EstimateCost(wordCount),
-            Model = "claude-3-5-sonnet-20241022",
+            Model = "claude-sonnet-4-6",
             ContentPageId = page.Id,
         };
         _db.AiUsages.Add(usage);
@@ -171,57 +176,40 @@ public class GenerateContentHandler : IRequestHandler<GenerateContentCommand, Ge
         }, null);
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
+    // ── Prompt builders ───────────────────────────────────────────────────────
 
-    private static string SimulateContentGeneration(
-        string title, string? keyword, string pageType,
-        int requestedWords, string? templateBody, List<string> bannedWords,
-        string? customPrompt, string brandName)
+    private static string BuildSystemPrompt(string brandName, List<string> bannedWords, string? templateBody)
     {
-        // Stub implementation — in production this calls Claude API.
-        // The real implementation would:
-        //   1. Build a system prompt incorporating brand voice + banned words
-        //   2. Call Anthropic Claude API with messages
-        //   3. Return the HTML response
-        // For now we generate realistic placeholder content.
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"You are a professional SEO content writer for {brandName}.");
+        sb.AppendLine("Write well-structured HTML content using semantic tags (h1, h2, h3, p, ul, ol, strong).");
+        sb.AppendLine("Return ONLY the HTML — no markdown fences, no preamble, no explanation.");
+        sb.AppendLine("Include an <h1> for the title, multiple <h2> sections, and a clear conclusion.");
 
-        var bannedNote = bannedWords.Count > 0
-            ? $"<!-- Banned words avoided: {string.Join(", ", bannedWords)} -->"
-            : "";
+        if (bannedWords.Count > 0)
+            sb.AppendLine($"NEVER use these words: {string.Join(", ", bannedWords)}.");
 
-        return $"""
-            {bannedNote}
-            <article>
-              <h1>{title}</h1>
-              <p>This comprehensive guide covers everything you need to know about <strong>{keyword ?? title}</strong> for {brandName}.</p>
-              <h2>Introduction</h2>
-              <p>Understanding {keyword ?? title} is essential for anyone looking to {pageType.Replace("_", " ")} effectively. In this guide, we'll walk through the key concepts, best practices, and actionable steps you can take today.</p>
-              <h2>Key Benefits</h2>
-              <ul>
-                <li>Save time with proven strategies</li>
-                <li>Improve results with data-driven approaches</li>
-                <li>Scale your efforts efficiently</li>
-              </ul>
-              <h2>Getting Started</h2>
-              <p>To get started with {keyword ?? title}, you'll need to understand the fundamentals. {brandName} has developed a proven approach that combines industry best practices with innovative techniques.</p>
-              <h2>Conclusion</h2>
-              <p>By implementing these strategies, you'll be well on your way to mastering {keyword ?? title}. Contact {brandName} today to learn more about how we can help you achieve your goals.</p>
-            </article>
-            """;
+        if (!string.IsNullOrWhiteSpace(templateBody))
+            sb.AppendLine($"Follow this structure/template:\n{templateBody[..Math.Min(800, templateBody.Length)]}");
+
+        return sb.ToString();
     }
 
-    private static string BuildPrompt(GenerateContentCommand req, string? keywordText, string? templateBody)
+    private static string BuildUserPrompt(GenerateContentCommand req, string? keywordText, string brandName)
     {
         if (!string.IsNullOrWhiteSpace(req.CustomPrompt))
-            return req.CustomPrompt[..Math.Min(2000, req.CustomPrompt.Length)];
+            return req.CustomPrompt;
 
-        var prompt = $"Write a {req.WordCount}-word {req.PageType.Replace("_", " ")} about: {req.Title}";
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Write a {req.WordCount}-word {req.PageType.Replace("_", " ")} titled: \"{req.Title}\".");
+
         if (!string.IsNullOrWhiteSpace(keywordText))
-            prompt += $". Target keyword: {keywordText}";
-        if (!string.IsNullOrWhiteSpace(templateBody))
-            prompt += $". Follow this template structure: {templateBody[..Math.Min(500, templateBody.Length)]}";
+            sb.AppendLine($"Primary keyword to optimise for: {keywordText}");
 
-        return prompt[..Math.Min(2000, prompt.Length)];
+        sb.AppendLine($"Brand: {brandName}");
+        sb.AppendLine("Use clear headings, bullet points where appropriate, and a strong CTA at the end.");
+
+        return sb.ToString();
     }
 
     private static int CountWords(string html)

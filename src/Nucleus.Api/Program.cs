@@ -225,12 +225,27 @@ builder.Services.AddHttpClient("dataforseo", client =>
     client.Timeout = TimeSpan.FromSeconds(60);
     client.BaseAddress = new Uri("https://api.dataforseo.com");
 });
+builder.Services.AddHttpClient("anthropic", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(120); // Claude can take 30-60s for long content
+});
+builder.Services.AddHttpClient("falai", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(60);
+});
 
 // ── Email service (MailKit) ────────────────────────────────────────────────
 builder.Services.AddSingleton<IEmailService, MailKitEmailService>();
 
 // ── Audit service ─────────────────────────────────────────────────────────
 builder.Services.AddScoped<IAuditService, Nucleus.Infrastructure.Services.AuditService>();
+
+// ── AI services ───────────────────────────────────────────────────────────
+builder.Services.AddScoped<IClaudeService, Nucleus.Infrastructure.Services.ClaudeService>();
+builder.Services.AddScoped<IImageGenerationService, Nucleus.Infrastructure.Services.FalAiService>();
+
+// ── Tenant plan enforcement ───────────────────────────────────────────────
+builder.Services.AddScoped<ITenantPlanService, Nucleus.Infrastructure.Multitenancy.TenantPlanService>();
 
 // ── SignalR ───────────────────────────────────────────────────────────────
 builder.Services.AddSignalR();

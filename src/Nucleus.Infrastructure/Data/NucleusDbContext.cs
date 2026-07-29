@@ -196,7 +196,7 @@ public class NucleusDbContext(
             e.HasIndex(c => c.TenantId);
             e.Property(c => c.Subject).HasMaxLength(500).IsRequired();
             e.Property(c => c.Status).HasMaxLength(50).HasDefaultValue("draft");
-            e.HasOne(c => c.Brand).WithMany().HasForeignKey(c => c.BrandId);
+            e.HasOne(c => c.Brand).WithMany(b => b.EmailCampaigns).HasForeignKey(c => c.BrandId);
         });
 
         builder.Entity<BrandProvisioningStep>(e =>

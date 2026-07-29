@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nucleus.Application.StudioHub.Commands;
+using Nucleus.Application.StudioHub.DTOs;
 using Nucleus.Application.StudioHub.Queries;
 
 namespace Nucleus.Api.Controllers;
@@ -84,6 +85,45 @@ public class StudioController(IMediator mediator) : ControllerBase
         {
             return BadRequest(new { success = false, error = ex.Message });
         }
+    }
+
+    /// <summary>GET /api/studio/pages/{id} — full page detail including HtmlContent</summary>
+    [HttpGet("pages/{id:guid}")]
+    [ProducesResponseType(200)]
+    [ProducesResponseType(404)]
+    public async Task<IActionResult> GetPage(Guid id, CancellationToken ct)
+    {
+        var page = await mediator.Send(new GetWebsitePageQuery(id), ct);
+
+        if (page is null)
+            return NotFound(new { success = false, error = "Page not found." });
+
+        return Ok(new { success = true, data = page });
+    }
+
+    /// <summary>PUT /api/studio/pages/{id} — update page content and metadata (slug is immutable)</summary>
+    [HttpPut("pages/{id:guid}")]
+    [ProducesResponseType(200)]
+    [ProducesResponseType(400)]
+    [ProducesResponseType(404)]
+    public async Task<IActionResult> UpdatePage(Guid id, [FromBody] UpdatePageRequest req, CancellationToken ct)
+    {
+        var page = await mediator.Send(
+            new UpdateWebsitePageCommand(
+                id,
+                req.Title,
+                req.PageType,
+                req.HtmlContent,
+                req.SeoTitle,
+                req.MetaDescription,
+                req.OgImage,
+                req.SchemaJson),
+            ct);
+
+        if (page is null)
+            return NotFound(new { success = false, error = "Page not found." });
+
+        return Ok(new { success = true, data = page });
     }
 
     /// <summary>PUT /api/studio/pages/{id}/publish — set status = published</summary>
@@ -216,6 +256,59 @@ public class StudioController(IMediator mediator) : ControllerBase
         return Ok(new { success = true, data = result });
     }
 
+    // ─── Video Library ─────────────────────────────────────────────────────
+
+    /// <summary>GET /api/studio/videos?brandId={id}&amp;page=1&amp;pageSize=50</summary>
+    [HttpGet("videos")]
+    [ProducesResponseType(200)]
+    [ProducesResponseType(400)]
+    [ProducesResponseType(404)]
+    public async Task<IActionResult> GetVideos(
+        [FromQuery] Guid brandId,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken ct = default)
+    {
+        if (brandId == Guid.Empty)
+            return BadRequest(new { success = false, error = "brandId is required." });
+
+        var result = await mediator.Send(new GetVideoLibraryQuery(brandId, page, pageSize), ct);
+
+        if (result is null)
+            return NotFound(new { success = false, error = "Brand not found." });
+
+        return Ok(new { success = true, data = result });
+    }
+
+    /// <summary>POST /api/studio/videos — register a video asset</summary>
+    [HttpPost("videos")]
+    [ProducesResponseType(201)]
+    [ProducesResponseType(400)]
+    public async Task<IActionResult> AddVideo([FromBody] AddVideoRequest req, CancellationToken ct)
+    {
+        try
+        {
+            var asset = await mediator.Send(
+                new AddVideoAssetCommand(
+                    req.BrandId,
+                    req.Name,
+                    req.Url,
+                    req.Platform,
+                    req.ThumbnailUrl,
+                    req.DurationSeconds,
+                    req.Description),
+                ct);
+
+            return CreatedAtAction(nameof(GetVideos),
+                new { brandId = req.BrandId },
+                new { success = true, data = asset });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { success = false, error = ex.Message });
+        }
+    }
+
     /// <summary>POST /api/studio/assets — register an uploaded asset in the library</summary>
     [HttpPost("assets")]
     [ProducesResponseType(201)]
@@ -275,6 +368,24 @@ public record GenerateImageRequest(
     string? StyleHint = null,
     int? Width = null,
     int? Height = null);
+
+public record UpdatePageRequest(
+    string Title,
+    string PageType,
+    string? HtmlContent = null,
+    string? SeoTitle = null,
+    string? MetaDescription = null,
+    string? OgImage = null,
+    string? SchemaJson = null);
+
+public record AddVideoRequest(
+    Guid BrandId,
+    string Name,
+    string Url,
+    string Platform = "other",
+    string? ThumbnailUrl = null,
+    int? DurationSeconds = null,
+    string? Description = null);
 
 public record UploadAssetRequest(
     Guid BrandId,

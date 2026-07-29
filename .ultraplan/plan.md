@@ -1,127 +1,110 @@
-# Nucleus Marketing OS — Current State & Roadmap (Updated 2026-05-26)
+# Implementation Plan: Sprint 31 — Wiring Phase
 
 ## Context
-Sprints 1-22 are complete. Nucleus has a working multi-tenant foundation (auth, brands, billing, GHL sync, keyword ranks, Stripe, CI/CD, super-admin, audit log). Next: build the 5-service-hub architecture, then port proven SEO Hub features into each hub one at a time.
+Replace stubs with real APIs (Claude + fal.ai Flux), add ITenantPlanService enforcement, build missing GET/PUT /api/studio/pages/{id}, Video Library page.
 
-## The Model
-- **SEO Hub** = test/staging — features are built and proven here first
-- **Nucleus** = live SaaS production — only fully working, multi-tenanted features ship here
-- A feature moves SEO Hub → Nucleus when: proven working + multi-tenancy added + plan gates added
+## Changes
 
-## What's Built (Sprint 22 Baseline)
-- Multi-tenant: Tenant → Brand → TenantEntity hierarchy, ICurrentTenantService
-- Auth: JWT + refresh tokens, lockout, password reset, verification, Google Sign-In ready
-- Stripe billing: checkout, portal, webhooks, plan tiers (starter/pro/agency), plan enforcement
-- Super-admin: all-tenants view, impersonate, plan change
-- Audit log: EF interceptor captures CRUD on all key entities
-- GHL contacts sync (Hangfire background job)
-- DataForSEO keyword rank tracking (nightly + on-demand)
-- Email campaigns (basic)
-- WP blog management
-- CI/CD: GitHub Actions build + test on every PR
-- Performance: memory cache, Brotli compression, DisableConcurrentExecution on all jobs
-- Sentry error monitoring
+### 1. IClaudeService — new interface
+- **File**: `src/Nucleus.Application/Common/Interfaces/IClaudeService.cs` (new)
+- **Change**: `Task<string> GenerateAsync(string systemPrompt, string userPrompt, string model, int maxTokens)`
 
-## Current Stack
-C# .NET 9 / Blazor WASM / EF Core 9 / Supabase PostgreSQL / Hangfire / Stripe / Railway
+### 2. ClaudeService — implementation
+- **File**: `src/Nucleus.Infrastructure/Services/ClaudeService.cs` (new)
+- **Change**: Named HttpClient "anthropic" → POST `https://api.anthropic.com/v1/messages`; headers: `x-api-key`, `anthropic-version: 2023-06-01`; parse `content[0].text`
+- **Register**: `Program.cs` — `AddHttpClient("anthropic")` + `AddScoped<IClaudeService, ClaudeService>()`
 
-## Sprint 23 — Service Hub Architecture (DO FIRST)
-Build the shell before any hub features. Nothing else starts until this is done.
+### 3. IImageGenerationService — new interface
+- **File**: `src/Nucleus.Application/Common/Interfaces/IImageGenerationService.cs` (new)
+- **Change**: `Task<string> GenerateImageAsync(string prompt, int width, int height)` returns image URL
 
-### Changes
+### 4. FalAiService — implementation
+- **File**: `src/Nucleus.Infrastructure/Services/FalAiService.cs` (new)
+- **Change**: POST `https://fal.run/fal-ai/flux/schnell`; `Authorization: Key {FAL_KEY}`; parse `images[0].url`; throw if FAL_KEY missing
+- **Register**: `Program.cs` — `AddHttpClient("falai")` + `AddScoped<IImageGenerationService, FalAiService>()`
 
-#### `src/Nucleus.Web/Layout/MainLayout.razor`
-- Add service switcher (5 hub pills) to sidebar, below brand selector
-- Add hub-context CSS class to `<div class="app-shell">` based on active hub
-- Hub pills: Content (blue), Search (green), Authority (purple), Distribution (amber), Studio (pink)
-- Global nav items (Dashboard, Brands, Team, Settings, Billing) always visible below switcher
+### 5. ITenantPlanService + TenantPlanService
+- **File**: `src/Nucleus.Application/Common/Interfaces/ITenantPlanService.cs` (new)
+- **File**: `src/Nucleus.Infrastructure/Multitenancy/TenantPlanService.cs` (new)
+- **Change**: `IsFeatureAllowed(feature)` checks plan limits: starter={content_generation:5/mo, design_generation:3/mo, image_generation:0}; pro/agency=unlimited
+- **Register**: `Program.cs` — `AddScoped<ITenantPlanService, TenantPlanService>()`
 
-#### New hub layout files (`src/Nucleus.Web/Layout/`)
-- `ContentLayout.razor` — `--hub-color: #3b82f6` + Content focus menu
-- `SearchLayout.razor` — `--hub-color: #16a34a` + Search focus menu
-- `AuthorityLayout.razor` — `--hub-color: #8b5cf6` + Authority focus menu
-- `DistributionLayout.razor` — `--hub-color: #f59e0b` + Distribution focus menu
-- `StudioLayout.razor` — `--hub-color: #ec4899` + Studio focus menu
+### 6. GenerateContentHandler — wire Claude + plan service
+- **File**: `src/Nucleus.Application/ContentHub/Commands/GenerateContentCommand.cs:44`
+- **Change**: Inject `IClaudeService` + `ITenantPlanService`; replace manual plan check with `_plan.IsFeatureAllowed("content_generation")`; replace `SimulateContentGeneration()` with real `_claude.GenerateAsync()`
 
-Each layout injects `--hub-color` as a CSS variable on `:root` → topbar strip + sidebar accent + active nav states pick it up automatically.
+### 7. GenerateDesignHandler — wire Claude + plan service
+- **File**: `src/Nucleus.Application/StudioHub/Commands/GenerateDesignCommand.cs:54`
+- **Change**: Inject `IClaudeService` + `ITenantPlanService`; replace `GenerateHtmlScaffold()` with Claude call; plan gate: design_generation pro+
 
-#### `src/Nucleus.Web/wwwroot/` CSS
-- Add `--hub-color` CSS variable consumed by `.topbar`, `.nav-item.active`, `.sidebar-logo`
-- Add `.hub-switcher` component styles
+### 8. GenerateImageHandler — wire fal.ai + plan service
+- **File**: `src/Nucleus.Application/StudioHub/Commands/GenerateImageCommand.cs:46`
+- **Change**: Inject `IImageGenerationService` + `ITenantPlanService`; replace picsum URL with `_imageGen.GenerateImageAsync()`; plan gate: agency only
 
-#### Page folder structure (`src/Nucleus.Web/Pages/`)
-- `Content/` — future Content Hub pages
-- `Search/` — future Search Hub pages
-- `Authority/` — future Authority Hub pages
-- `Distribution/` — future Distribution Hub pages
-- `Studio/` — future Studio Hub pages
+### 9. GetWebsitePageQuery — new
+- **File**: `src/Nucleus.Application/StudioHub/Queries/GetWebsitePageQuery.cs` (new)
+- **Change**: Returns `WebsitePageDto?` by id scoped to TenantId; follows `GetPageLibraryQuery.cs` pattern
 
-#### Brand selector persistence
-- Store active brand in `localStorage["nucleus_active_brand"]`
-- Read on `MainLayout.razor` init — all hub layouts inherit it
+### 10. UpdateWebsitePageCommand — new
+- **File**: `src/Nucleus.Application/StudioHub/Commands/UpdateWebsitePageCommand.cs` (new)
+- **Change**: Updates title, pageType, htmlContent, seoTitle, metaDescription, ogImage, schemaJson; slug NOT updatable; verifies TenantId ownership
 
-### Verification
-Navigate between 5 hub areas → sidebar accent + topbar color changes → focus menu updates → brand selector persists → no full page reload
+### 11. StudioController — GET/{id} + PUT/{id}
+- **File**: `src/Nucleus.Api/Controllers/StudioController.cs:29`
+- **Change**: Add `GET /api/studio/pages/{id:guid}` + `PUT /api/studio/pages/{id:guid}` endpoints
 
----
+### 12. Editor.razor — wire load + save
+- **File**: `src/Nucleus.Web/Pages/Studio/Pages/Editor.razor`
+- **Change**: `LoadPageDetail()` calls `GET /api/studio/pages/{id}` and populates all fields; `Save()` on existing pages calls `PUT /api/studio/pages/{id}`
 
-## Sprint 24 — Content Hub (first complete hub)
+### 13. GetVideoLibraryQuery + AddVideoAssetCommand — new
+- **File**: `src/Nucleus.Application/StudioHub/Queries/GetVideoLibraryQuery.cs` (new)
+- **File**: `src/Nucleus.Application/StudioHub/Commands/AddVideoAssetCommand.cs` (new)
+- **Reuses**: `VideoAsset` (DbContext:47), `VideoAssetDto` (StudioHub/DTOs/VideoAssetDto.cs)
 
-### Scope (all must work before shipping)
-1. Keyword Library — list, add, bulk import, generate from keyword, tag/filter
-2. AI Generator — brand context, page type selector, keyword input, generate blog/page/FAQ
-3. Editorial Calendar — scheduled content view, assign keyword, status tracking
-4. Content Approval Queue — review, approve, request changes
-5. Content Library — all content (published, draft, scheduled) with search + filter
-6. Brand Voice Rules — banned words list per brand
-7. Content Templates — global + brand-specific approved templates
+### 14. StudioController — video endpoints
+- **File**: `src/Nucleus.Api/Controllers/StudioController.cs`
+- **Change**: Add `GET /api/studio/videos?brandId=&page=&pageSize=` + `POST /api/studio/videos`
 
-### Multi-tenancy additions over SEO Hub version
-- All queries: `WHERE tenant_id = @TenantId AND brand_id = @BrandId`
-- AI usage tracked in `AiUsage` table — blocked + notified at plan limit
-- Templates scoped per tenant (not global)
+### 15. Videos/Index.razor — new
+- **File**: `src/Nucleus.Web/Pages/Studio/Videos/Index.razor` (new)
+- **Change**: `@page "/studio/videos"` + `@layout StudioLayout`; list videos + add form; mirror Assets/Index.razor
 
-### New entities needed
-- `ContentPage` (TenantEntity) — title, keyword, page_type, status, html_content, seo metadata
-- `ContentTemplate` (TenantEntity) — name, page_type, body, is_global
-- `AiUsage` (TenantEntity) — feature, tokens_used, cost, created_at
-- `BannedWord` (TenantEntity) — word, reason
+### 16. StudioLayout.razor — Videos nav
+- **File**: `src/Nucleus.Web/Layout/StudioLayout.razor`
+- **Change**: Add Videos `<NavLink href="/studio/videos">` after Asset Library
 
-### EF Migration name
-`dotnet ef migrations add ContentHub`
+## Railway env vars to add
+- `ANTHROPIC_API_KEY`
+- `FAL_KEY`
 
----
+## Implementation Sequence
+1. IClaudeService + ClaudeService + IImageGenerationService + FalAiService (parallel)
+2. ITenantPlanService + TenantPlanService
+3. Register all in Program.cs
+4. GetWebsitePageQuery + UpdateWebsitePageCommand (parallel)
+5. Update GenerateContentHandler + GenerateDesignHandler + GenerateImageHandler (parallel, depends 1+2)
+6. StudioController — GET/{id} + PUT/{id} + video endpoints (depends 4)
+7. Editor.razor (depends 6)
+8. GetVideoLibraryQuery + AddVideoAssetCommand (parallel)
+9. Videos/Index.razor + StudioLayout.razor nav
+10. dotnet build + dotnet test
 
-## Sprint 25+ (after Content Hub ships complete)
-
-| Sprint | Hub | Key features |
-|--------|-----|-------------|
-| 25 | Search | Rankings, rank history, alerts, topic clusters, content gaps, page performance |
-| 26 | Distribution | Social scheduler, email blasts, campaigns, send log, reviews |
-| 27 | Authority | Backlinks, brand mentions, press releases, schema manager, outreach |
-| 28 | Studio | Page manager (CMS), design studio, image gen, asset library |
-
----
-
-## Implementation Sequence (Sprint 23)
-1. Update `MainLayout.razor` — hub switcher + CSS variable injection
-2. Create 5 layout files (ContentLayout, SearchLayout, AuthorityLayout, DistributionLayout, StudioLayout)
-3. Add `--hub-color` CSS var to wwwroot styles
-4. Create `Pages/{Hub}/` folder scaffolding
-5. Add brand selector localStorage persistence
-6. Test: navigate all 5 hubs, verify theme switches, brand selector persists
-
-## Risks
-- Blazor WASM CSS variable injection: set via JS interop or CSS class on body — test both
-- Focus menu in layout: use `[CascadingParameter]` or NavigationManager.Uri to determine active section
-- Brand selector state: `localStorage` bridge needs JS interop wrapper
+## Edge Cases & Risks
+- ANTHROPIC_API_KEY/FAL_KEY missing: both services throw InvalidOperationException — visible in Railway deploy logs
+- Claude latency 5-15s: existing spinner in Editor.razor handles it
+- image_generation = agency only: return 402 with upgrade message for pro tenants
+- Slug is immutable: UpdateWebsitePageCommand must not accept slug changes
+- Anthropic response: parse content[0].text; non-"end_turn" stop_reason = throw
 
 ## Verification
 ```
-dotnet build Nucleus.sln   # clean build
+dotnet build Nucleus.sln   # 0 errors, 0 warnings
 dotnet test                # all tests pass
-git push origin main       # Railway deploys
-# Navigate: /content/keywords → blue theme
-# Navigate: /search/rankings → green theme
-# Switch brand in selector → persists when switching hubs
+git push origin main
+# POST /api/content/generate → real Claude HTML (no placeholder comment)
+# POST /api/studio/images/generate → fal.ai URL (no picsum.photos)
+# GET /api/studio/pages/{id} → 200 with full WebsitePageDto
+# PUT /api/studio/pages/{id} → 200, DB row updated
+# GET /studio/videos → Blazor page loads with video list
 ```
