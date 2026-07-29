@@ -51,8 +51,9 @@ A feature DOES NOT ship to Nucleus until it has been:
 | 31 | Studio Hub v2 — real Claude API, fal.ai images, plan gates, video library |
 | 32 | Finder Hub v2 — GHL lead capture, A/B testing, analytics CSV, visual conditions, white-label |
 | 33 | Reports Hub — cross-hub analytics: content, search, finders, distribution |
+| 34 | Leads Hub — paginated lead browser, per-finder filter, answers expand, CSV export |
 
-**Current state: Sprint 33 complete. Build: 0 errors, 0 warnings.**
+**Current state: Sprint 34 complete. Build: 0 errors, 0 warnings.**
 
 ---
 
@@ -278,6 +279,16 @@ A feature DOES NOT ship to Nucleus until it has been:
 - ✅ StudioLayout.razor — Video Library nav item added
 - NOTE: FAL_KEY still needs adding to Railway for image generation
 - Commit: 1cb932e
+
+### Sprint 34 — Leads Hub ✅ COMPLETE (2026-07-28)
+- ✅ GetBrandLeadsQuery — paginated, filterable by finder + days (FinderSessions with LeadEmail)
+- ✅ ExportLeadsCsvQuery — CSV with Finder, Name, Email, Phone, Converted, CapturedAt
+- ✅ LeadsController: GET /api/leads + GET /api/leads/export
+- ✅ LeadsLayout.razor — Hub="leads" HubColor="#ec4899" (pink)
+- ✅ ShellLayout.razor — Leads hub-pill added after Reports
+- ✅ Pages/Leads/Index.razor — paginated table, finder filter pills, click-to-expand answers, Export CSV
+- ✅ No migrations — queries existing finder_sessions table
+- ✅ Build: 0 errors, 0 warnings
 
 ### Sprint 33 — Reports Hub ✅ COMPLETE (2026-07-28)
 - ✅ 5 DTOs: BrandOverviewDto, ContentReportDto, SearchReportDto, FinderReportDto, DistributionReportDto

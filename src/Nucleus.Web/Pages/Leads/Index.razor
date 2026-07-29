@@ -1,0 +1,240 @@
+@page "/leads"
+@attribute [Authorize]
+@layout LeadsLayout
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>Leads Hub — Nucleus</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Leads Hub</h1>
+        <p class="page-subtitle">All contacts captured via Finder widgets — name, email, phone, and answers.</p>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+        <select class="form-input" style="width:auto;" @bind="_days" @bind:after="LoadData">
+            <option value="7">Last 7 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="90">Last 90 days</option>
+        </select>
+        @if (_selectedBrand != null)
+        {
+            <button class="btn-secondary" @onclick="ExportCsv" disabled="@_exporting">
+                @(_exporting ? "Exporting…" : "Export CSV")
+            </button>
+        }
+    </div>
+</div>
+
+<div class="brand-pill-row">
+    @foreach (var b in _brands)
+    {
+        <button class="brand-pill-btn @(_selectedBrand?.Id == b.Id ? "brand-pill-btn--active" : "")"
+                @onclick="() => SelectBrand(b)">
+            <span class="brand-pill-dot" style="background:@b.PrimaryColor"></span>
+            @b.Name
+        </button>
+    }
+</div>
+
+@if (_selectedBrand != null && _finders.Count > 0)
+{
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+        <button class="brand-pill-btn @(_selectedFinder == null ? "brand-pill-btn--active" : "")"
+                @onclick="() => SelectFinder(null)">
+            All Finders
+        </button>
+        @foreach (var f in _finders)
+        {
+            <button class="brand-pill-btn @(_selectedFinder?.Id == f.Id ? "brand-pill-btn--active" : "")"
+                    @onclick="() => SelectFinder(f)">
+                @f.Name
+            </button>
+        }
+    </div>
+}
+
+@if (_error != null) { <div class="alert-error">@_error</div> }
+@if (_loading) { <div class="loading-state"><div class="spinner spinner--lg"></div></div> }
+
+@if (_data != null)
+{
+    @if (_data.TotalCount == 0)
+    {
+        <div class="empty-state" style="margin-top:24px;">
+            No leads captured in this window. Make sure your Finders have a <strong>lead_capture</strong> step.
+        </div>
+    }
+    else
+    {
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <span style="font-size:12px;color:var(--color-muted);">
+                @_data.TotalCount leads — page @_data.Page of @((_data.TotalCount + _data.PageSize - 1) / _data.PageSize)
+            </span>
+            <div style="display:flex;gap:8px;">
+                <button class="btn-sm" disabled="@(_data.Page <= 1)" @onclick="PrevPage">← Prev</button>
+                <button class="btn-sm" disabled="@(_data.Page * _data.PageSize >= _data.TotalCount)" @onclick="NextPage">Next →</button>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Captured</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Phone</th>
+                        <th>Finder</th>
+                        <th>Converted</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var lead in _data.Items)
+                    {
+                        <tr style="cursor:pointer;" @onclick="() => ToggleDetail(lead.SessionId)">
+                            <td style="font-size:11px;color:var(--color-muted);">
+                                @lead.CreatedAt.ToString("MMM d, yyyy HH:mm")
+                            </td>
+                            <td style="font-weight:600;">@(lead.LeadName ?? "—")</td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(lead.LeadEmail))
+                                {
+                                    <a href="mailto:@lead.LeadEmail" style="color:var(--hub-color);"
+                                       @onclick:stopPropagation="true">@lead.LeadEmail</a>
+                                }
+                                else { <span style="color:var(--color-muted);">—</span> }
+                            </td>
+                            <td style="font-size:12px;">@(lead.LeadPhone ?? "—")</td>
+                            <td style="font-size:12px;color:var(--color-muted);">@lead.FinderName</td>
+                            <td>
+                                @if (lead.Converted)
+                                {
+                                    <span class="status-badge status-badge--success">converted</span>
+                                }
+                                else
+                                {
+                                    <span class="status-badge status-badge--muted">no</span>
+                                }
+                            </td>
+                        </tr>
+                        @if (_expandedId == lead.SessionId
+                             && !string.IsNullOrEmpty(lead.AnswersJson)
+                             && lead.AnswersJson != "{}")
+                        {
+                            <tr>
+                                <td colspan="6" style="background:var(--color-surface-2);padding:12px 16px;">
+                                    <div style="font-size:11px;font-weight:600;color:var(--color-muted);margin-bottom:6px;">ANSWERS</div>
+                                    <code style="font-size:11px;white-space:pre-wrap;word-break:break-all;">@lead.AnswersJson</code>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private List<BrandItem> _brands = [];
+    private BrandItem? _selectedBrand;
+    private List<FinderItem> _finders = [];
+    private FinderItem? _selectedFinder;
+    private LeadsPage? _data;
+    private bool _loading;
+    private bool _exporting;
+    private string? _error;
+    private int _days = 30;
+    private int _page = 1;
+    private Guid? _expandedId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resp = await Http.GetFromJsonAsync<ApiWrapper<List<BrandItem>>>("api/v1/brands");
+        _brands = resp?.Data ?? [];
+        if (_brands.Count > 0) await SelectBrand(_brands[0]);
+    }
+
+    private async Task SelectBrand(BrandItem brand)
+    {
+        _selectedBrand = brand;
+        _selectedFinder = null;
+        _data = null;
+        _page = 1;
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<List<FinderItem>>>($"api/finder?brandId={brand.Id}");
+            _finders = resp?.Data ?? [];
+        }
+        catch { _finders = []; }
+        await LoadData();
+    }
+
+    private async Task SelectFinder(FinderItem? finder)
+    {
+        _selectedFinder = finder;
+        _page = 1;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        if (_selectedBrand is null) return;
+        _loading = true; _error = null;
+        try
+        {
+            var fParam = _selectedFinder != null ? $"&finderId={_selectedFinder.Id}" : "";
+            var resp = await Http.GetFromJsonAsync<ApiWrapper<LeadsPage>>(
+                $"api/leads?brandId={_selectedBrand.Id}&days={_days}&page={_page}&pageSize=50{fParam}");
+            _data = resp?.Data;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task PrevPage() { _page--; await LoadData(); }
+    private async Task NextPage() { _page++; await LoadData(); }
+
+    private void ToggleDetail(Guid id) =>
+        _expandedId = _expandedId == id ? null : id;
+
+    private async Task ExportCsv()
+    {
+        if (_selectedBrand is null) return;
+        _exporting = true;
+        try
+        {
+            var fParam = _selectedFinder != null ? $"&finderId={_selectedFinder.Id}" : "";
+            var response = await Http.GetAsync(
+                $"api/leads/export?brandId={_selectedBrand.Id}&days={_days}{fParam}");
+            if (response.IsSuccessStatusCode)
+            {
+                var bytes    = await response.Content.ReadAsByteArrayAsync();
+                var fileName = response.Content.Headers.ContentDisposition?.FileName
+                    ?? $"leads-{_days}d.csv";
+                await JS.InvokeVoidAsync("downloadFileFromBase64",
+                    Convert.ToBase64String(bytes), fileName, "text/csv");
+            }
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _exporting = false; }
+    }
+
+    private class BrandItem { public Guid Id { get; set; } public string Name { get; set; } = ""; public string PrimaryColor { get; set; } = "#ec4899"; }
+    private class FinderItem { public Guid Id { get; set; } public string Name { get; set; } = ""; }
+    private class LeadItem
+    {
+        public Guid SessionId { get; set; }
+        public Guid FinderId { get; set; }
+        public string FinderName { get; set; } = "";
+        public string? LeadName { get; set; }
+        public string? LeadEmail { get; set; }
+        public string? LeadPhone { get; set; }
+        public string AnswersJson { get; set; } = "{}";
+        public bool Converted { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+    }
+    private class LeadsPage { public int TotalCount { get; set; } public int Page { get; set; } public int PageSize { get; set; } public List<LeadItem> Items { get; set; } = []; }
+    private record ApiWrapper<T>(bool Success, T? Data);
+}
