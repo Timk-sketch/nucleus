@@ -1,5 +1,32 @@
 # Nucleus — Architectural Decisions
 
+## 2026-07-30 — Tenant Isolation
+
+### Tenant Query Filter References the DbContext Instance, Not a Captured Value (NUC-ISO-4)
+**Decision:** `OnModelCreating` builds every `TenantEntity` query filter against the
+`NucleusDbContext.CurrentTenantId` instance property. Reading `tenantService.TenantId` into a local
+and baking it in with `Expression.Constant` is banned.
+
+**Rationale:** EF builds the model once and caches it per context type. A baked `Guid` froze the
+filter to whichever tenant triggered model building — in practice `Guid.Empty`, from the startup
+health check resolving a context with no HTTP user. App-layer tenant isolation did not work at all.
+EF recognises a constant that *is* the context and rewrites the member access into a query
+parameter, re-read on every query; that is the documented multi-tenant pattern and it costs nothing.
+
+**Rejected:** a per-tenant `IModelCacheKeyFactory`. It would compile and cache a separate model per
+tenant, converting a bounded cache into one that grows with the customer count — paying a large
+price to solve a problem that an instance member solves for free.
+
+**Implication:** `CurrentTenantId` is `public` rather than the `private` the work order sketched, so
+that EF's dynamically built expression can read it without depending on private-member access from
+generated code. It is also the natural hook for NUC-ISO-2's insert stamping.
+
+**Guarded by:** `Tenant_query_filter_is_evaluated_dynamically_not_frozen` (no `Guid` constant in the
+expression) and `Each_context_sees_only_its_own_tenants_rows_through_the_shared_model` (two tenants
+plus an empty tenant, all reading through one cached model). Both run in `tenant-isolation-gate`.
+
+---
+
 ## 2026-05-26 — Core Strategic Decisions
 
 ### SEO Hub = Test Server, Nucleus = Live Production

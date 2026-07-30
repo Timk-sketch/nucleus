@@ -60,6 +60,15 @@ public class NucleusDbContext(
     public DbSet<FinderSession> FinderSessions => Set<FinderSession>();
     public DbSet<FinderAnalytics> FinderAnalytics => Set<FinderAnalytics>();
 
+    /// <summary>
+    /// Tenant that the executing request belongs to.
+    /// Must be read through this instance member rather than captured as a value — the global query
+    /// filters in <see cref="OnModelCreating"/> depend on that to stay dynamic (NUC-ISO-4).
+    /// Guid.Empty is deliberately not special-cased: an unauthenticated context filters to
+    /// Guid.Empty and therefore matches no rows, which is the safe direction to fail.
+    /// </summary>
+    public Guid CurrentTenantId => tenantService.TenantId;
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -614,15 +623,31 @@ public class NucleusDbContext(
 
         // ── End Sprint 30 ─────────────────────────────────────────────────
 
-        // Global tenant query filter on all TenantEntity subclasses
-        var tenantId = tenantService.TenantId;
+        // Global tenant query filter on all TenantEntity subclasses.
+        //
+        // NUC-ISO-4 — this must NOT read tenantService.TenantId into a local. EF builds the model
+        // once and caches it per context type, so Expression.Constant(someGuid) freezes the filter
+        // to whichever tenant happened to trigger model building. In practice that was Guid.Empty,
+        // from the startup health check resolving a context with no HTTP user, and every later
+        // request then queried through that stale filter.
+        //
+        // Referencing a property on the DbContext *instance* is what makes it dynamic: EF detects a
+        // constant whose value is the context itself and rewrites the member access into a query
+        // parameter re-read from the executing context on each query. That is EF's documented
+        // multi-tenant pattern (normally written as `e => e.TenantId == CurrentTenantId`), built by
+        // hand here because the filter is applied reflectively across every entity type.
+        //
+        // Do NOT substitute a per-tenant IModelCacheKeyFactory: that compiles and caches a separate
+        // model per tenant, turning a bounded cache into an unbounded one.
+        var contextRef = Expression.Constant(this);
+        var currentTenantId = Expression.Property(contextRef, nameof(CurrentTenantId));
         foreach (var entityType in builder.Model.GetEntityTypes()
             .Where(e => typeof(TenantEntity).IsAssignableFrom(e.ClrType)))
         {
             var param = Expression.Parameter(entityType.ClrType, "e");
             var prop = Expression.Property(param, nameof(TenantEntity.TenantId));
             var filter = Expression.Lambda(
-                Expression.Equal(prop, Expression.Constant(tenantId)),
+                Expression.Equal(prop, currentTenantId),
                 param);
             builder.Entity(entityType.ClrType).HasQueryFilter(filter);
         }
