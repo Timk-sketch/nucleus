@@ -20,6 +20,7 @@ namespace Nucleus.Architecture.Tests;
 public class TenantIsolationTests
 {
     private static readonly Guid TenantA = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    private static readonly Guid TenantB = Guid.Parse("22222222-2222-2222-2222-222222222222");
 
     private static NucleusDbContext BuildContext(Guid tenantId, string dbName)
     {
@@ -51,11 +52,11 @@ public class TenantIsolationTests
     }
 
     // Invariant 4b — the filter must be evaluated PER REQUEST, not frozen to a constant.
-    // FAILS today: OnModelCreating bakes Expression.Constant(tenantService.TenantId) at
-    // model-build time, and EF caches the model once (no IModelCacheKeyFactory), so the
-    // filter is stuck on the first tenant seen — in practice Guid.Empty from the startup
-    // health check. This test IS the definition of done for NUC-ISO-4.
-    [Fact(Skip = "NUC-ISO-4: tenant query filter is frozen to a Guid constant at model-build time; un-skip when it references the current tenant dynamically.")]
+    // PASSES as of NUC-ISO-4: OnModelCreating now builds the filter against the DbContext
+    // instance property CurrentTenantId instead of baking Expression.Constant(Guid), so EF
+    // rewrites it into a query parameter re-read from the executing context. A regression
+    // that reintroduces a captured Guid turns this red again — which is the point.
+    [Fact]
     public void Tenant_query_filter_is_evaluated_dynamically_not_frozen()
     {
         using var ctx = BuildContext(TenantA, nameof(Tenant_query_filter_is_evaluated_dynamically_not_frozen));
@@ -71,6 +72,47 @@ public class TenantIsolationTests
         finder.Found.Should().BeFalse(
             "a hard-coded Guid in the query filter means it is frozen to one tenant for the whole process; " +
             "it must reference the current tenant so EF re-evaluates it on every query");
+    }
+
+    // Invariant 4b, behavioural half — added with NUC-ISO-4.
+    //
+    // The test above inspects the shape of the expression; this one proves the effect. Both are
+    // needed: a filter can be shaped correctly and still resolve once, if EF fails to recognise the
+    // reference as the context. It also exercises the exact mechanism that caused the bug — EF
+    // builds the model once per context type and shares it across every context in this assembly,
+    // so the second and third contexts here are deliberately reading through a model they did not
+    // build. Under the old frozen filter this fails.
+    [Fact]
+    public async Task Each_context_sees_only_its_own_tenants_rows_through_the_shared_model()
+    {
+        const string db = nameof(Each_context_sees_only_its_own_tenants_rows_through_the_shared_model);
+
+        using (var seed = BuildContext(TenantA, db))
+        {
+            seed.Brands.Add(new Brand { TenantId = TenantA, Code = "a", Name = "Tenant A brand" });
+            seed.Brands.Add(new Brand { TenantId = TenantB, Code = "b", Name = "Tenant B brand" });
+            await seed.SaveChangesAsync();
+        }
+
+        using (var asA = BuildContext(TenantA, db))
+        {
+            var codes = await asA.Brands.Select(b => b.Code).ToListAsync();
+            codes.Should().BeEquivalentTo(new[] { "a" }, "tenant A must never see tenant B's rows");
+        }
+
+        using (var asB = BuildContext(TenantB, db))
+        {
+            var codes = await asB.Brands.Select(b => b.Code).ToListAsync();
+            codes.Should().BeEquivalentTo(new[] { "b" },
+                "the filter must re-evaluate per context; a frozen one would still be serving tenant A");
+        }
+
+        using (var unauthenticated = BuildContext(Guid.Empty, db))
+        {
+            var leaked = await unauthenticated.Brands.AnyAsync();
+            leaked.Should().BeFalse(
+                "a context with no tenant must match no rows — failing closed, never open");
+        }
     }
 
     // Invariant 3 — TenantId is stamped automatically on insert.
