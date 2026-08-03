@@ -35,7 +35,7 @@ tenant-isolation gate (`scripts/tenant-gate/gate.sh` + `tests/Nucleus.Architectu
 | 1 | **No secrets in committed config.** Connection-string passwords, JWT signing keys, Stripe secret keys come from env / user-secrets — never committed `appsettings*.json`. | ⚠️ dev DB password + dev JWT key committed in `Nucleus.Api/appsettings.Development.json` → **NUC-ISO-3** |
 | 2 | **RLS on every tenant table.** Each tenant table has Row-Level Security enabled with a `TenantId` policy — a database backstop independent of the app. | ❌ not implemented anywhere → **NUC-ISO-1** |
 | 3 | **`TenantId` auto-stamped on insert.** `SaveChangesAsync` sets `TenantId` from `ICurrentTenantService` on new `TenantEntity` rows. | ❌ `SaveChangesAsync` only stamps `UpdatedAt` → **NUC-ISO-2** |
-| 4 | **Global query filter on every `TenantEntity`, evaluated per request.** Applied in `OnModelCreating`; must reference the *current* tenant, not a baked constant. No `IgnoreQueryFilters()` without `// tenant-gate:allow <reason>`. | ⚠️ filter is **present but frozen** — `OnModelCreating` bakes `Expression.Constant(TenantId)` at first model build (EF caches the model once), so it sticks on the first tenant seen (in practice `Guid.Empty`). App-layer isolation does not currently work → **NUC-ISO-4** |
+| 4 | **Global query filter on every `TenantEntity`, evaluated per request.** Applied in `OnModelCreating`; must reference the *current* tenant, not a baked constant. No `IgnoreQueryFilters()` without `// tenant-gate:allow <reason>`. | ✅ **fixed 2026-07-30 (NUC-ISO-4).** The filter is built against the `NucleusDbContext.CurrentTenantId` instance property, so EF rewrites it into a per-query parameter instead of baking `Expression.Constant(Guid)`. Guarded by two tests: `Tenant_query_filter_is_evaluated_dynamically_not_frozen` (no `Guid` constant in the expression) and `Each_context_sees_only_its_own_tenants_rows_through_the_shared_model` (two tenants + an empty tenant read correctly through one cached model). |
 
 The gate turns each ❌/⚠️ into a merge-checkable target: implement the fix, un-skip its test /
 flip its check, done.
@@ -66,8 +66,8 @@ understood · 2 weeks real use with no structural change requests · describable
 - **When code and this doc disagree:** that's the bug. Fix whichever is wrong in the same PR.
 
 ## Current backlog (born from the 2026-07-02 audit, in priority order)
-- **NUC-ISO-4** — make the tenant query filter dynamic per-request *(live isolation break; small; do first)*
-- **NUC-ISO-1** — add RLS + `TenantId` policy migrations for every tenant table *(database backstop)*
+- ~~**NUC-ISO-4** — make the tenant query filter dynamic per-request~~ ✅ **shipped 2026-07-30.** App-layer isolation now works; RLS is next and remains the independent backstop.
+- **NUC-ISO-1** — add RLS + `TenantId` policy migrations for every tenant table *(database backstop — now the highest-priority item)*
 - **NUC-ISO-2** — auto-stamp `TenantId` in `SaveChangesAsync`; un-skip its architecture test
 - **NUC-ISO-3** — move dev secrets out of committed config into user-secrets; confirm prod is env-only
 - **NUC-ISO-5** — annotate the 4 reviewed-legitimate `IgnoreQueryFilters()` bypasses (`AdminController` SuperAdmin audit view; `BrandProvisioningJob` background job) with `// tenant-gate:allow`, then flip the bypass guard to blocking
