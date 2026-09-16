@@ -32,12 +32,16 @@ jobs:
       - name: Run security audit
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Helper agents run on the main model below, so nothing escalates to Opus.
+          CLAUDE_CODE_SUBAGENT_MODEL_FORCE: '1'
           NUCLEUS_SUPABASE_URL: ${{ secrets.NUCLEUS_SUPABASE_URL }}
           NUCLEUS_SUPABASE_SERVICE_KEY: ${{ secrets.NUCLEUS_SUPABASE_SERVICE_KEY }}
           SLACK_NUCLEUS_WEBHOOK: ${{ secrets.SLACK_NUCLEUS_WEBHOOK }}
         run: |
           npx -y @anthropic-ai/claude-code@latest \
             --dangerously-skip-permissions \
+            --model sonnet \
+            --max-turns 80 \
             -p "You are auditing the Nucleus C#/.NET 9 + Blazor WASM codebase. Do a thorough security and quality audit:
           1. Check all API controllers for missing [Authorize] on endpoints that should be protected
           2. Check all EF queries for missing TenantId filters (multi-tenancy breach risk)
