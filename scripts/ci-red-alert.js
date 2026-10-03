@@ -41,7 +41,7 @@
  * `action_required` are silent for the same reason — none of them means broken.
  */
 
-const fs = require('fs');
+import { readFileSync } from 'fs';
 
 /**
  * Stable per-workflow-per-branch title. Stable is what makes dedup and
@@ -119,7 +119,7 @@ async function main() {
     process.exit(1);
   }
 
-  const run = JSON.parse(fs.readFileSync(eventPath, 'utf8')).workflow_run;
+  const run = JSON.parse(readFileSync(eventPath, 'utf8')).workflow_run;
   if (!run) {
     console.error('::error::no workflow_run in the event payload.');
     process.exit(1);
@@ -180,11 +180,9 @@ async function main() {
   }
 }
 
-if (require.main === module) {
-  main().catch((err) => {
-    console.error(`::error::ci-red-alert failed: ${err.message}`);
-    process.exit(1);
-  });
-}
+main().catch((err) => {
+  console.error(`::error::ci-red-alert failed: ${err.message}`);
+  process.exit(1);
+});
 
-module.exports = { issueTitle, decide, RED };
+export { issueTitle, decide, RED };
