@@ -1,0 +1,53 @@
+name: CI red alert
+
+# Opens a GitHub issue when a watched workflow fails on `master`, and closes it
+# again when that workflow goes green. See scripts/ci-red-alert.js for the full
+# reasoning — the short version is that in tk-dl-sites the test suite was red on
+# trunk for seven consecutive commits on 2026-08-26 and nobody noticed, because a
+# red tick in the Actions tab is only visible to someone already looking at the
+# Actions tab. This repo has the same blind spot, so it gets the same alarm.
+#
+# `workflow_run` is the only trigger that can see another workflow's result, and
+# it runs from the copy of this file on the DEFAULT BRANCH — so edits take effect
+# only once merged, never from a PR. That is also what makes it safe: a fork PR
+# cannot rewrite this to open issues with a write token.
+#
+# Watched workflows are listed by their exact `name:`, not their filename. If a
+# workflow is renamed, update it here too — a stale name fails silent, which is
+# the exact failure mode this file exists to prevent.
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+      - Deploy
+      - Health Monitor (Staging)
+      - Integration Tests (Staging)
+      - Maintenance
+      - tenant-isolation-gate
+    types: [completed]
+    branches: [master]
+
+permissions:
+  contents: read
+  issues: write
+
+# One alert at a time per workflow. Without this, a burst of pushes can race two
+# runs into both finding "no open issue" and both filing one.
+concurrency:
+  group: ci-red-alert-${{ github.event.workflow_run.name }}
+  cancel-in-progress: false
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Open or close the tracking issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/ci-red-alert.js
